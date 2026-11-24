@@ -7,7 +7,8 @@ import json, sys, csv, html, unicodedata, os
 season, data, out = sys.argv[1:4]
 S = json.load(open(season))
 meta = json.load(open(os.path.join(data, "tasks.json")))
-n = lambda s: unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower().replace("'", "").strip()
+SPELL = str.maketrans({"ı": "i", "ł": "l", "ø": "o", "đ": "d", "ð": "d", "ß": "ss", "æ": "ae", "œ": "oe", "þ": "th"})
+n = lambda s: " ".join(unicodedata.normalize("NFKD", s.lower().translate(SPELL)).encode("ascii", "ignore").decode().replace("'", "").split())
 e = html.escape
 fmt = lambda s: "%d:%02d:%02d" % (s // 3600, s % 3600 // 60, s % 60) if s is not None else "—"
 num = lambda v, d=2: ("%.*f" % (d, v)).replace(".", ",")
@@ -28,12 +29,16 @@ FTV = meta.get("ftv", 0.25)
 REF_MIN = 120
 tasks = [T["id"] for T in S]
 W = {t: VAL.get(t, 1.0) for t in tasks}
-rel = {}
+rel = {}; PEN = {}
 for T in S:
     win = min(r["final"] for r in T["rows"])
     worst = max(r["final"] for r in T["rows"]) / win - 1
     for k in offrank: rel.setdefault(k, {})[T["id"]] = worst
-    for r in T["rows"]: rel.setdefault(n(r["name"]), {})[T["id"]] = r["final"] / win - 1
+    for r in T["rows"]:
+        # an official score of 0 for a pilot who flew is a penalty (airspace, start, ...): he takes the task's largest delay, as if absent
+        pen = r.get("offTotal") is not None and float(r["offTotal"]) == 0
+        rel.setdefault(n(r["name"]), {})[T["id"]] = worst if pen else r["final"] / win - 1
+        if pen: PEN.setdefault(T["id"], []).append(r["name"])
 def ftv(g):
     budget = sum(W.values()) * (1 - FTV); s = 0.0; kept = {}
     for t in sorted(tasks, key=lambda t: g[t]):
@@ -50,7 +55,7 @@ raw = {}
 for T in S:
     win = min(r["final"] for r in T["rows"]); worst = max(r["final"] for r in T["rows"]) - win
     for k in offrank: raw.setdefault(k, {})[T["id"]] = worst
-    for r in T["rows"]: raw.setdefault(n(r["name"]), {})[T["id"]] = r["final"] - win
+    for r in T["rows"]: raw.setdefault(n(r["name"]), {})[T["id"]] = worst if r.get("offTotal") is not None and float(r["offTotal"]) == 0 else r["final"] - win
 def ftv_raw(g):
     budget = sum(W.values()) * (1 - FTV); s = 0.0
     for t in sorted(tasks, key=lambda t: g[t]):
@@ -135,7 +140,7 @@ table{{width:100%;border-collapse:collapse;font-size:15px}}th{{font-weight:500;c
 <p class="notes">Les deux dernières colonnes sont des corrélations de rang chez les pilotes au but. Quand le classement officiel s'écarte lui-même de l'ordre d'arrivée, l'écart avec Wakefield est plus grand aussi.</p>
 {details}
 <h2>Classement général : retards en pourcentage, day quality et FTV officiels</h2>
-<p class="lead">Dans chaque manche, le retard d'un pilote est mesuré en pourcentage du temps corrigé du vainqueur, puis multiplié par la day quality officielle de la manche. Il est converti en minutes comme si chaque manche durait 2 h (1 % de retard = 1,2 min), puis additionné sur les manches gardées : le retard du général est donc un cumul, qui dépasse 2 h pour les pilotes souvent posés ou absents. Comme le FTV de la PWC ({FTV * 100:.0f} %), chaque pilote garde ses meilleures manches jusqu'à {(1 - FTV) * 100:.0f} % de la validité totale, la dernière en partie. Un posé entre avec son temps estimé, un absent avec le plus gros retard de la manche.</p>
+<p class="lead">Dans chaque manche, le retard d'un pilote est mesuré en pourcentage du temps corrigé du vainqueur, puis multiplié par la day quality officielle de la manche. Il est converti en minutes comme si chaque manche durait 2 h (1 % de retard = 1,2 min), puis additionné sur les manches gardées : le retard du général est donc un cumul, qui dépasse 2 h pour les pilotes souvent posés ou absents. Comme le FTV de la PWC ({FTV * 100:.0f} %), chaque pilote garde ses meilleures manches jusqu'à {(1 - FTV) * 100:.0f} % de la validité totale, la dernière en partie. Un posé entre avec son temps estimé, un absent avec le plus gros retard de la manche, tout comme un pilote pénalisé (0 point au classement officiel de la manche).{(' Pilotes pénalisés : ' + ' ; '.join(t.replace('task', 'manche ') + ' : ' + ', '.join(v) for t, v in PEN.items()) + '.') if PEN else ''}</p>
 <div class="kpi"><div class="w"><b>{num(sp_ftv)}</b>corrélation de rang avec le général officiel</div><div><b>{same_top10} / 10</b>pilotes en commun dans le top 10</div><div><b>{num(mean_abs, 1)}</b>places d'écart en moyenne</div><div><b>{num(sp_first)}</b>premier essai (retards bruts en minutes)</div><div><b>{num(sp_cum)}</b>sans FTV</div></div>
 <div class="scroll"><table class="stack"><thead><tr><th class="n">Wakefield</th><th class="n">Officiel</th><th class="n">1er essai</th><th>Pilote</th><th class="n">Retard</th><th>Manches écartées</th></tr></thead><tbody>{ov}</tbody></table></div>
 <p class="notes">Manches écartées : celles qui ne comptent pas, ou seulement en partie, au titre du FTV.</p>

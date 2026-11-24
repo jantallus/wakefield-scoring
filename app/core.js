@@ -511,14 +511,32 @@
   /* When the official results are known, take the official goal status of each pilot at ESS:
      goal lines are judged with tolerances the track alone cannot always settle. */
   function applyOfficialGoal(st, official) {
+    const nf = alignNames(st, official); if (nf && typeof process !== "undefined" && process.env.WF_DEBUG) console.error("aligned", nf);
     const off = new Map(official.filter(o => o.status).map(o => [norm(o.name), o.status]));
     let changed = 0;
     for (const p of st.pilots) { if (!p.ess) continue; const s = off.get(norm(p.name)); if (!s) continue; const g = s === "GOAL"; if (g !== p.goal) { p.goal = g; changed++; } }
     return changed;
   }
 
+  /* A track's pilot name can differ from the official one ("felix rodriguez" for "Felix Rodriguez Fernandez"):
+     when the name has no exact match, take the only official name whose words contain all of its words (or the reverse). */
+  function alignNames(st, official) {
+    const offNames = official.map(o => o.name), exact = new Set(offNames.map(norm));
+    const words = s => norm(s).split(" ").filter(Boolean), sub = (a, b) => a.every(w => b.includes(w));
+    let fixed = 0;
+    for (const p of st.pilots) {
+      if (exact.has(norm(p.name))) continue;
+      const w = words(p.name); if (w.length < 2) continue;
+      const hits = offNames.filter(o => { const v = words(o); return sub(w, v) || sub(v, w); });
+      if (hits.length === 1 && !st.pilots.some(q => q !== p && norm(q.name) === norm(hits[0]))) { p.name = hits[0]; fixed++; }
+    }
+    return fixed;
+  }
+
   /* ---------- comparison with official results ---------- */
-  function norm(s) { return String(s).normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/['’]/g, "").replace(/\s+/g, " ").trim(); }
+  // letters that have no accent to strip (ı ł ø đ ß æ œ) are spelled out, so "Tanrıverdi" matches "Tanriverdi"
+  const SPELL = { "ı": "i", "ł": "l", "ø": "o", "đ": "d", "ð": "d", "ß": "ss", "æ": "ae", "œ": "oe", "þ": "th" };
+  function norm(s) { return String(s).toLowerCase().replace(/[ıłøđðßæœþ]/g, c => SPELL[c]).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/['’]/g, "").replace(/\s+/g, " ").trim(); }
   function parseOfficialCsv(text) {
     const lines = String(text).trim().split(/\r?\n/); const head = lines.shift().split(/[,;\t]/).map(h => h.trim().toLowerCase());
     const col = re => head.findIndex(h => re.test(h));
@@ -551,6 +569,6 @@
     return out;
   }
 
-  const api = { DEFAULTS, FIELD_KEYS, DT, parseXctsk, normaliseTask, parseWpt, parseIGC, prepare, computeField, computeClock, buildReplay, parseOfficialCsv, compare, norm, spearman, decodePolyline, geodist, thermalDeaths, decodeBytes, applyOfficialGoal };
+  const api = { DEFAULTS, FIELD_KEYS, DT, parseXctsk, normaliseTask, parseWpt, parseIGC, prepare, computeField, computeClock, buildReplay, parseOfficialCsv, compare, norm, spearman, decodePolyline, geodist, thermalDeaths, decodeBytes, applyOfficialGoal, alignNames };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.Wakefield = api;
 })(typeof self !== "undefined" ? self : this);
