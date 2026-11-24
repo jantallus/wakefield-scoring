@@ -16,7 +16,7 @@ const [dir, id, outFile] = process.argv.slice(2);
   W.applyOfficialGoal(st, off);
   const opt = Object.assign({}, W.DEFAULTS), GV = W.computeField(st, opt), clk = W.computeClock(st, GV, opt);
   const replay = W.buildReplay(st, GV, clk);
-  const ranking = clk.ranking.map(r => ({ i: r.i, name: r.name, rank: r.rank, realRank: r.realRank || null, ess: r.ess, goal: r.goal, final: r.final, credit: r.credit, auto: r.auto, disc: r.disc, dReal: r.dReal, dCorr: r.dCorr, remLand: r.remLand, top10: st.top10[r.i] / 60 }));
+  const ranking = clk.ranking.map(r => ({ i: r.i, name: r.name, rank: r.rank, realRank: r.realRank || null, ess: r.ess, goal: r.goal, final: r.final, credit: r.credit, auto: r.auto, fol: r.fol, dReal: r.dReal, dCorr: r.dCorr, remLand: r.remLand, top10: st.top10[r.i] / 60 }));
   const cmp = W.compare(st, clk, off); delete cmp.rows;
   fs.writeFileSync(outFile, JSON.stringify({ replay, ranking, vref: clk.vref, D: clk.D, maxCredit: clk.maxCredit, base: clk.base, compare: cmp, opt }));
   console.log(outFile, (fs.statSync(outFile).size / 1e6).toFixed(1), "MB");

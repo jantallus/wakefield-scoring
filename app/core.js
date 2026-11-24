@@ -23,7 +23,8 @@
     climbW: 1,         // weight of a track point where the pilot was climbing
     sinkW: 0.35,       // weight of a track point where the pilot was not climbing
     eps: 0.15,         // price of risk
-    disc: 0,           // thermal discovery bonus (experimental): share of the time spent climbing where nobody marked
+    follow: 0.1,       // follower in a marked thermal: while a pilot climbs in a thermal that someone else marked before he got there,
+                       // his clock runs this much faster than real time (0 = off). Marking a thermal earns nothing, so it cannot be faked for credit.
     landedBase: "deadline" // or "lastEss"
   };
   const FIELD_KEYS = ["tol", "sigA", "sigL0", "sigLk", "sigB", "phi0", "Tm", "thGap", "thR", "thFade", "catchUp", "paceWin", "trailW", "k", "climbW", "sinkW"];
@@ -329,11 +330,19 @@
     const PACE = new Float32Array(N * G).fill(NaN), pw = Math.round(opt.paceWin / DT);
     for (let i = 0; i < N; i++) for (let g = pw; g < G; g++) { const o = i * G + g, p = o - pw; if (AIR[o] && AIR[p]) PACE[o] = (S[o] - S[p]) / opt.paceWin * 3600; }
     const lag = Math.round(TR / DT), keepTh = Math.max(opt.keep, opt.thMax), nlag = Math.round(keepTh / TR), nKeep = Math.round(opt.keep / TR);
-    const GV = new Float32Array(N * G);
+    const GV = new Float32Array(N * G), FOL = new Float32Array(N * G);
+    // start of each pilot's current climb in a thermal (a pause shorter than thGap continues the same climb)
+    const CS = new Float64Array(N * G).fill(NaN);
+    for (let i = 0; i < N; i++) {
+      let start = NaN, last = -Infinity;
+      for (let g = 0; g < G; g++) { const o = i * G + g; if (AIR[o] && CL[o]) { if (grid[g] - last > opt.thGap) start = grid[g]; last = grid[g]; CS[o] = start; } }
+    }
+    const thR2 = opt.thR * opt.thR;
     const sA2 = opt.sigA * opt.sigA, sB2 = opt.sigB * opt.sigB, rA = 3 * opt.sigA, rB2 = 9 * sB2;
     const kb = opt.k / 2, ka = opt.k / 4;
     const cap = N * (nlag + 1);
     const sx = new Float32Array(cap), sy = new Float32Array(cap), sz = new Float32Array(cap), ss = new Float32Array(cap), sw = new Float32Array(cap), so = new Int32Array(cap);
+    const sth = new Float32Array(cap), st0 = new Float64Array(cap); // thermal marker strength (1 while its cycle lives, then the fade) and when it was laid
     for (let gi = g0; gi < G; gi++) {
       let m = 0;
       for (let j = 0; j <= nlag; j++) {
@@ -348,15 +357,15 @@
         const wake = old ? 0 : Math.exp(-age / opt.Tm);
         for (let i = 0; i < N; i++) {
           const o = i * G + idx; if (!AIR[o]) continue;
-          let w;
+          let w, th = 0;
           if (CL[o]) {
             const dth = DEATH[o], t = grid[gi];
             const fade = dth > t ? 1 : opt.thFade > 0 && dth > -Infinity ? Math.exp(-(t - dth) / opt.thFade) : 0;
-            w = nrm * opt.climbW * Math.max(wake, fade);
+            w = nrm * opt.climbW * Math.max(wake, fade); th = fade;
           }
           else w = nrm * opt.sinkW * wake;
           if (w <= 0) continue;
-          sx[m] = X[o]; sy[m] = Y[o]; sz[m] = Z[o]; ss[m] = S[o]; sw[m] = w; so[m] = i; m++;
+          sx[m] = X[o]; sy[m] = Y[o]; sz[m] = Z[o]; ss[m] = S[o]; sw[m] = w; so[m] = i; sth[m] = th; st0[m] = grid[idx]; m++;
         }
       }
       for (let i = 0; i < N; i++) {
@@ -392,10 +401,21 @@
         // e = share of your pace above theirs; the help left is g x (1 - catchUp x e).
         if (cu && hw > 0) { const e = Math.max(0, (vo - hv / hw) / vo); g *= Math.max(0, 1 - opt.catchUp * e); }
         GV[oo] = g;
+        // follower: climbing in a thermal that another pilot marked before this climb began
+        if (CL[oo]) {
+          const cs = CS[oo]; let f = 0;
+          for (let q = 0; q < m; q++) {
+            if (so[q] === i || sth[q] <= f || st0[q] >= cs) continue;
+            const dxg = sx[q] - ox, dyg = sy[q] - oy;
+            if (dxg * dxg + dyg * dyg <= thR2) f = sth[q];
+          }
+          FOL[oo] = f;
+        }
       }
       if (progress && (gi - g0) % 25 === 0) progress((gi - g0) / (G - g0));
     }
     GV.death = DEATH; // kept for the replay
+    GV.fol = FOL;     // follower weight while climbing in someone else's thermal (0..1)
     return GV;
   }
 
@@ -414,7 +434,7 @@
     const PROJ = new Float32Array(N * G).fill(NaN), RATE = new Float32Array(N * G).fill(NaN);
     const res = pilots.map((p, i) => {
       if (p.start === null) return null;
-      let tau = 0, auto = 0, disc = 0;
+      let tau = 0, auto = 0, fol = 0;
       const tStop = p.ess || p.tLand;
       for (let gi = g0; gi < G; gi++) {
         const a = gi > g0 ? grid[gi - 1] : gate, t1 = grid[gi];
@@ -423,15 +443,15 @@
         const ds = AIR[o] && AIR[o - 1] ? Math.max(0, S[o] - S[o - 1]) : 0;
         const v = ds / DT * 3600, g = AIR[o] ? GV[o] : 1;
         let rate = 1 - opt.eps * (1 - g) * v / vref;
-        if (opt.disc > 0 && AIR[o] && CL[o] && g < 0.35) { const dr = opt.disc * (1 - g); rate -= dr; disc += dr * (b - a); }
         rate = Math.max(0, rate);
+        if (opt.follow > 0 && GV.fol && AIR[o] && GV.fol[o] > 0) { const fr = opt.follow * GV.fol[o]; rate += fr; fol += fr * (b - a); }
         tau += rate * (b - a);
         auto += (1 - g) * ds * (b - a) / DT;
         RATE[o] = rate;
         const rem = AIR[o] ? Math.max(0, D - S[o]) : p.remLand;
         PROJ[o] = tau + rem / vref * 3600;
       }
-      return { i, name: p.name, ess: p.ess ? p.ess - gate : null, goal: p.goal, tau, auto, disc, remLand: p.remLand, tStop };
+      return { i, name: p.name, ess: p.ess ? p.ess - gate : null, goal: p.goal, tau, auto, fol, remLand: p.remLand, tStop };
     });
     const ok = res.filter(Boolean);
     // only pilots in goal keep their time; a pilot at ESS who did not reach goal is ranked with the landed pilots
@@ -443,7 +463,8 @@
     const notGoal = ok.filter(r => !(r.ess !== null && r.goal));
     notGoal.forEach(r => {
       r.dReal = Math.max(0, D - r.remLand);
-      r.dCorr = Math.min(D, r.dReal + opt.eps * r.auto);
+      // the follower's lost time, turned into distance at v_ref
+      r.dCorr = Math.max(0, Math.min(D, r.dReal + opt.eps * r.auto - r.fol / 3600 * vref));
       r.final = base + (D - r.dCorr) / vref * 3600;
     });
     ok.forEach(r => { r.credit = r.ess !== null && r.goal ? r.ess - r.final : null; });

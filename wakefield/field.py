@@ -14,6 +14,7 @@ TH_R, TH_MAX = 0.4, 3600.0         # thermal radius (km), longest life of a mark
 TH_FADE = float(sys.argv[4]) if len(sys.argv) > 4 else 180.0  # after the cycle ends, the marker fades over this time constant (s)
 KEEPTH = max(KEEP, TH_MAX)         # how far back climbing points are read
 BACK = 3600.0                     # grid starts this long before the gate
+FOLLOW = 0.1                      # follower in a marked thermal: his clock runs this much faster than real time
 
 ess_times = [p["ess"] - GATE for p in pilots if p["ess"]]
 VREF = float(np.median([D / (s / 3600) for s in ess_times]))  # km/h
@@ -55,10 +56,19 @@ pw = int(PACE_WIN / DT)
 PACE = np.full((N, G), np.nan)
 PACE[:, pw:] = np.where(AIR[:, pw:] & AIR[:, :-pw], (S[:, pw:].astype(np.float64) - S[:, :-pw]) / PACE_WIN * 3600, np.nan)
 
+# start of each pilot's current climb (a pause shorter than TH_GAP continues the same climb)
+CS = np.full((N, G), np.nan)
+for i in range(N):
+    start, last = np.nan, -np.inf
+    for g in np.where(AIR[i] & CL[i])[0]:
+        if grid[g] - last > TH_GAP: start = grid[g]
+        last = grid[g]; CS[i, g] = start
+
 g0 = int(BACK / DT)                     # index of GATE in grid
 lag = int(TR / DT); nlag = int(KEEPTH / TR); nkeep = int(KEEP / TR)
 jj = np.arange(nlag + 1); jj = jj[(jj <= nkeep) | (jj % 3 == 0)]   # old markers: one trail step in three
 GV = np.zeros((N, G), np.float32)       # g per pilot per step
+FOL = np.zeros((N, G), np.float32)      # follower weight while climbing in someone else's thermal
 for gi in range(g0, G):
     idx = gi - jj * lag    # current + trail
     jv = jj[idx >= 0]; idx = idx[idx >= 0]
@@ -73,10 +83,14 @@ for gi in range(g0, G):
     with np.errstate(over="ignore", invalid="ignore"):
         fade = np.where(dth > grid[gi], 1.0, np.where(np.isfinite(dth) & (TH_FADE > 0), np.exp(-(grid[gi] - dth) / max(TH_FADE, 1e-9)), 0.0))
     w = np.where(CL[:, idx], nrm * np.maximum(wake, fade), nrm * 0.35 * wake) * ok
+    thv = np.where(CL[:, idx] & ok, fade, 0.0); t0s = np.broadcast_to(grid[idx][None], thv.shape)
     obs = np.where(AIR[:, gi])[0]
     if len(obs) == 0: continue
     src = ok.ravel()
+    keepw = (w > 0).ravel()
+    src = src & keepw
     sx, sy, sz, ss, w = sx.ravel()[src], sy.ravel()[src], sz.ravel()[src], ss.ravel()[src], w.ravel()[src]
+    thv, t0s = thv.ravel()[src], t0s.ravel()[src]
     own = np.repeat(np.arange(N), len(idx))[src]
     ox, oy, oz, os_ = X[obs, gi][:, None], Y[obs, gi][:, None], Z[obs, gi][:, None], S[obs, gi][:, None]
     dx = ss[None] - os_
@@ -103,6 +117,12 @@ for gi in range(g0, G):
         use = (vo > 5) & (hw > 0)
         g = np.where(use, g * np.maximum(0.0, 1 - CATCHUP * np.nan_to_num(e)), g)
     GV[obs, gi] = g
+    # follower: climbing in a thermal that another pilot marked before this climb began
+    clo = CL[obs, gi]
+    if clo.any():
+        cs = CS[obs, gi][:, None]
+        m_ = (dh2 <= TH_R * TH_R) & (thv[None] > 0) & (t0s[None] < cs) & (own[None, :] != obs[:, None]) & clo[:, None]
+        FOL[obs, gi] = np.where(m_, thv[None], 0.0).max(1)
 
 # clocks
 res = []
@@ -111,7 +131,7 @@ for i, p in enumerate(pilots):
     if not p["start"]:
         res.append(None); continue
     tau = 0.0; t_stop = p["ess"] or p["t_land"]
-    auto_km = 0.0; final = None
+    auto_km = 0.0; fol = 0.0; final = None
     for gi in range(g0, G):
         t0, t1 = grid[gi - 1] if gi > g0 else GATE, grid[gi]
         if t0 >= t_stop: break
@@ -121,7 +141,9 @@ for i, p in enumerate(pilots):
         else: ds = 0.0
         v = ds / DT * 3600
         g = float(GV[i, gi]) if AIR[i, gi] else 1.0
-        rate = 1 - EPS * (1 - g) * v / VREF
+        rate = max(0.0, 1 - EPS * (1 - g) * v / VREF)
+        if AIR[i, gi] and FOL[i, gi] > 0:
+            rate += FOLLOW * float(FOL[i, gi]); fol += FOLLOW * float(FOL[i, gi]) * (b - a)
         tau += rate * (b - a)
         auto_km += (1 - g) * ds * (b - a) / DT
         TAU[i, gi] = tau
@@ -131,7 +153,7 @@ for i, p in enumerate(pilots):
         final = tau
     else:
         final = tau + p["rem"][min(np.searchsorted(p["t"], p["t_land"]), len(p["t"]) - 1)] / VREF * 3600 * LANDPEN
-    res.append(dict(tau=tau, final=final, auto_km=auto_km))
+    res.append(dict(tau=tau, final=final, auto_km=auto_km, fol=fol))
 
 # freeze projections after stop
 for i, p in enumerate(pilots):

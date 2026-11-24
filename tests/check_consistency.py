@@ -39,9 +39,9 @@ rho = spearman([P[k]["final"] for k in common], [J[k]["tau"] for k in common])
 if rho < RANK_MIN:
     errors.append("rank correlation at ESS %.4f < %.3f" % (rho, RANK_MIN))
 landed = sorted(k for k in P if k in J and P[k]["ess"] is None and J[k]["ess"] is None)
-worst_d = (0.0, None)
+worst_d = (0.0, "")
 for k in landed:
-    d_py = min(D, max(0.0, py["D"] - P[k]["rem"]) + EPS * P[k]["auto_km"])
+    d_py = max(0.0, min(D, max(0.0, py["D"] - P[k]["rem"]) + EPS * P[k]["auto_km"] - P[k].get("fol", 0.0) / 3600 * py["vref"]))
     worst_d = max(worst_d, (abs(d_py - J[k]["dCorr"]), k))
 if worst_d[0] > DIST_TOL:
     errors.append("corrected distance of %s differs by %.2f km" % (worst_d[1], worst_d[0]))

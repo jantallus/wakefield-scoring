@@ -53,6 +53,7 @@ dτ/dt = 1 − ε · (1 − g) · max(0, v_prog) / v_ref
 | T_m | Memory of the wake | 4 min |
 | Thermal cycle | A point where a pilot was climbing keeps marking the thermal, at full weight, for as long as the thermal is occupied: it stays alive while someone climbs within 0.4 km of it, and its cycle ends once nobody has for 60 s (at most 1 h). It then fades out with a short tail (time constant 3 min), since pilots arriving just after still know roughly where the gaggle climbed | 60 s, 0.4 km, 3 min |
 | Φ₀ | How much help counts as "helped" | 8 |
+| Follower in a thermal | While a pilot climbs in a thermal that another pilot marked before this climb began (and whose cycle is still alive, or fading), the clock runs faster than real time: dτ/dt += f × marker strength. The follower is penalised rather than the finder rewarded, so marking a thermal earns nothing in itself and cannot be faked for credit; the first pilot in a thermal is not affected. For a landed pilot the lost time is turned into distance (× v_ref) | f = 0.1 |
 | Catching up | If you go faster than the pilots showing you the way, the difference is yours: the share of your pace (progress over the last 10 min) above the pace of the pilots helping you counts as autonomous. A pilot catching up at 30 km/h behind a gaggle moving at 20 km/h gets a third of their progress credited; a follower at the gaggle's pace gets nothing | on |
 | ε | Price of risk: the most time a fully led task can earn (ε × distance / v_ref) | 0.15 |
 | v_ref | Reference speed: median speed of pilots at ESS | per task |
@@ -61,7 +62,7 @@ The clock is computed only from present and past positions, so it can run live f
 
 **Goal.** The clock stops at ESS, so that nobody races flat out to the ground between ESS and goal, but the task is only accomplished in goal. A pilot who reaches ESS and not goal (in flight) is ranked like a pilot landed just before goal.
 
-**Pilots who land before goal** are always ranked behind every pilot in goal. They get a corrected distance, `distance + ε × km flown autonomously`, capped at the task distance (ties: the longer real distance wins), converted to an estimated time: `time until task deadline + (task distance − corrected distance) / v_ref`.
+**Pilots who land before goal** are always ranked behind every pilot in goal. They get a corrected distance, `distance + ε × km flown autonomously − follower penalty × v_ref`, capped at the task distance (ties: the longer real distance wins), converted to an estimated time: `time until task deadline + (task distance − corrected distance) / v_ref`.
 
 Cylinders are validated on the WGS84 ellipsoid with the 0.5 % radius tolerance (FAI category 2). Progress along the course uses a flat projection.
 
@@ -109,7 +110,7 @@ All six valid tasks of PWC Gemona 2026 (task 1 was stopped and declared invalid)
 
 ## The application
 
-[`app/`](app/) is a browser application: load the task (XCTrack QR code or `.xctsk`), the IGC tracks (zip) and, optionally, the official results, then tune every parameter with sliders and watch the animated replay, the live leaderboard and the final ranking. Everything runs locally, in a Web Worker: no track leaves the computer. A field takes about 5 to 10 seconds for a task of 120 pilots; ε, the thermal-discovery bonus and the landed pilots' time base recompute instantly.
+[`app/`](app/) is a browser application: load the task (XCTrack QR code or `.xctsk`), the IGC tracks (zip) and, optionally, the official results, then tune every parameter with sliders and watch the animated replay, the live leaderboard and the final ranking. Everything runs locally, in a Web Worker: no track leaves the computer. A field takes about 5 to 10 seconds for a task of 120 pilots; ε, the follower penalty and the landed pilots' time base recompute instantly.
 
 Online: **https://jantallus.github.io/wakefield-scoring/app/** (once GitHub Pages is on). Locally: `python3 -m http.server` at the repository root, then open `http://localhost:8000/app/`. The "example" button loads Gemona 2026 tasks 2 or 3 from `data/`.
 

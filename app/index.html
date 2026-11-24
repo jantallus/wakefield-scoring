@@ -190,7 +190,7 @@ const SL = {
   ["sinkW", "Poids d'un point sans montée", 0, 1, 0.05, v => num(v, 2), "Un pilote qui monte marque un thermique (poids 1)."]],
  clock: [
   ["eps", "Prix du risque ε", 0, 0.3, 0.01, v => num(v, 2), "Temps maximal gagné sur une manche entièrement menée : ε × distance / v_ref."],
-  ["disc", "Découverte de thermique (expérimental)", 0, 0.5, 0.05, v => num(v, 2), "Crédit pendant les montées là où personne ne marquait."]],
+  ["follow", "Pénalité du suiveur en thermique", 0, 0.5, 0.05, v => v ? "+" + num(v * 100, 0) + " %" : "aucune", "Quand un pilote enroule un thermique déjà marqué par un autre avant son arrivée, son horloge tourne plus vite que le temps réel. Marquer un thermique ne rapporte rien : impossible de tricher en marquant pour de faux."]],
  prep: [["tol", "Tolérance des cylindres", 0, 0.01, 0.001, v => num(v * 100) + " %", "Catégorie 2 FAI : 0,5 %."]]
 };
 function buildSliders() {
