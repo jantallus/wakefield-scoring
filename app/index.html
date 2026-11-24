@@ -72,7 +72,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 
 <div class="card">
  <h3>Essayer avec un exemple</h3>
- <div class="row" style="margin-top:0"><select id="exSel" aria-label="Exemple"><option value="task3">PWC Gemona 2026, manche 3 (123 pilotes)</option><option value="task2">PWC Gemona 2026, manche 2 (124 pilotes)</option></select><button id="exBtn">Charger et calculer</button></div>
+ <div class="row" style="margin-top:0"><select id="exSel" aria-label="Exemple"><option value="task2">PWC Gemona 2026, manche 2</option><option value="task3" selected>PWC Gemona 2026, manche 3</option><option value="task4">PWC Gemona 2026, manche 4</option><option value="task5">PWC Gemona 2026, manche 5</option><option value="task6">PWC Gemona 2026, manche 6 (arrêtée)</option><option value="task7">PWC Gemona 2026, manche 7</option></select><button id="exBtn">Charger et calculer</button></div>
 </div>
 
 <h2>1. Données de la manche</h2>
@@ -103,6 +103,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
  <div class="row"><button id="tpAdd">Ajouter une balise</button>
   <label>Porte de start (UTC) <input id="gate" type="text" placeholder="11:15" size="6"></label>
   <label>Deadline (UTC) <input id="deadline" type="text" placeholder="16:00" size="6"></label>
+  <label>Manche arrêtée à (UTC) <input id="stop" type="text" placeholder="option" size="6"></label>
   <label>Start <select id="dir"><option value="">auto</option><option value="ENTER">en entrant</option><option value="EXIT">en sortant</option></select></label>
   <label>Décalage horaire local <input id="utcOff" type="number" value="2" step="0.5" style="width:5em"> h</label></div>
  <p class="hint" id="taskInfo">Aucune manche chargée.</p>
@@ -220,14 +221,14 @@ $("tp").addEventListener("change", e => {
 });
 $("tp").addEventListener("click", e => { const d = e.target.dataset.del; if (d != null) { tps.splice(+d, 1); renderTask(); } });
 $("tpAdd").onclick = () => { const g = tps.findIndex(p => p.type === "ESS"); tps.splice(g < 0 ? tps.length : g, 0, { type: "TURN", name: "", lat: 0, lon: 0, radius: 1 }); renderTask(); };
-["gate", "deadline", "dir"].forEach(id => $(id).addEventListener("change", checkTask));
-function taskSpec() { return { tps: tps.map(p => Object.assign({}, p)), gate: parseHM($("gate").value), deadline: parseHM($("deadline").value), dir: $("dir").value || null }; }
+["gate", "deadline", "stop", "dir"].forEach(id => $(id).addEventListener("change", checkTask));
+function taskSpec() { return { tps: tps.map(p => Object.assign({}, p)), gate: parseHM($("gate").value), deadline: parseHM($("deadline").value), stop: parseHM($("stop").value), dir: $("dir").value || null }; }
 function checkTask() {
  let ok = false;
  try {
   const s = taskSpec(); if (s.gate == null) throw new Error("Indiquez l'heure de la porte de start (UTC).");
   const t = W.normaliseTask(s);
-  $("taskInfo").textContent = `${t.course.length} cylindres du start à l'ESS · ${num(t.D, 2)} km du start à l'ESS, ${num(t.Dtoff, 2)} km depuis le décollage · start ${t.dir === "EXIT" ? "en sortant" : "en entrant"} · porte ${hhmm(s.gate)} UTC` + (s.deadline != null ? ` · deadline ${hhmm(s.deadline)} UTC` : " · pas de deadline");
+  $("taskInfo").textContent = `${t.course.length} cylindres du start à l'ESS · ${num(t.D, 2)} km du start à l'ESS, ${num(t.Dtoff, 2)} km depuis le décollage · start ${t.dir === "EXIT" ? "en sortant" : "en entrant"} · porte ${hhmm(s.gate)} UTC` + (s.deadline != null ? ` · deadline ${hhmm(s.deadline)} UTC` : " · pas de deadline") + (s.stop != null ? ` · arrêtée à ${hhmm(s.stop)} UTC` : "");
   ok = true;
  } catch (err) { $("taskInfo").textContent = tps.length ? err.message : "Aucune manche chargée."; }
  $("run").disabled = !(ok && tracks && tracks.length) || busy;
@@ -236,7 +237,7 @@ function checkTask() {
 }
 function setTask(t) {
  tps = t.all.map(p => ({ type: p.type, name: p.name, lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5), radius: p.radius }));
- $("gate").value = hhmm(t.gate); $("deadline").value = hhmm(t.deadline); $("dir").value = "";
+ $("gate").value = hhmm(t.gate); $("deadline").value = hhmm(t.deadline); $("stop").value = ""; $("dir").value = "";
  renderTask();
 }
 function readTaskText(text) { try { setTask(W.parseXctsk(text)); status(""); } catch (err) { status("Manche illisible : " + err.message, true); } }
@@ -301,8 +302,11 @@ $("exBtn").onclick = async () => {
  const t = $("exSel").value, base = "../data/gemona-2026/";
  try {
   setBusy(true); status("Téléchargement de l'exemple (environ 18 Mo)…");
+  const meta = await fetch(base + "tasks.json").then(r => r.ok ? r.json() : null).catch(() => null);
+  const m = meta && meta.tasks.find(x => x.id === t);
   const [q, z, o] = await Promise.all([fetch(base + "tasks/" + t + ".xctsk.txt").then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }), fetch(base + t + "-igc.zip").then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); }), fetch(base + "official/" + t + ".csv").then(r => r.ok ? r.text() : null)]);
   $("taskText").value = q; setTask(W.parseXctsk(q));
+  if (m && m.stopUtc) { $("stop").value = m.stopUtc; checkTask(); }
   tracks = await readTracks([new File([z], t + ".zip")]); $("trkInfo").textContent = tracks.length + " traces IGC chargées.";
   official = o ? W.parseOfficialCsv(o) : null;
   setBusy(false); runAll();

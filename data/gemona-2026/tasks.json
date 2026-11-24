@@ -1,0 +1,47 @@
+{
+  "competition": "Paragliding World Cup Italy, Gemona, 2026",
+  "source": "https://scoring.pwca.org/gemona-2026/",
+  "note": "Task 1 (26 July) was stopped at 13:08 and declared invalid: it is not included.",
+  "tasks": [
+    {
+      "id": "task2",
+      "label": "Manche 2",
+      "date": "2026-07-27"
+    },
+    {
+      "id": "task3",
+      "label": "Manche 3",
+      "date": "2026-07-28"
+    },
+    {
+      "id": "task4",
+      "label": "Manche 4",
+      "date": "2026-07-29"
+    },
+    {
+      "id": "task5",
+      "label": "Manche 5",
+      "date": "2026-07-30"
+    },
+    {
+      "id": "task6",
+      "label": "Manche 6",
+      "date": "2026-07-31",
+      "stopUtc": "14:41"
+    },
+    {
+      "id": "task7",
+      "label": "Manche 7",
+      "date": "2026-08-01"
+    }
+  ],
+  "ftv": 0.25,
+  "validity": {
+    "task2": 1.0,
+    "task3": 0.993,
+    "task4": 0.996,
+    "task5": 1.0,
+    "task6": 0.99,
+    "task7": 1.0
+  }
+}

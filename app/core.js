@@ -53,7 +53,8 @@
         const z = decodePolyline(p.z);
         tps.push({ name: p.n || "", lon: z[0] / 1e5, lat: z[1] / 1e5, alt: z[2], radius: z[3] / 1000, type: p.t === 2 ? "SSS" : p.t === 3 ? "ESS" : "TURN" });
       }
-      if (j.s) { gate = hms((j.s.g || [])[0]); dir = j.s.d === 1 ? "EXIT" : j.s.d === 2 ? "ENTER" : null; }
+      // the meaning of "d" (start direction) is not reliable across tools: the direction is deduced from the course
+      if (j.s) gate = hms((j.s.g || [])[0]);
       if (j.g) deadline = hms(j.g.d);
     } else {
       for (const p of j.turnpoints) {
@@ -77,14 +78,15 @@
     if (!toff) toff = tps[0];
     const lat0 = course.reduce((a, p) => a + p.lat, 0) / course.length;
     const lon0 = course.reduce((a, p) => a + p.lon, 0) / course.length;
-    const task = { course, toff, gate: t.gate, deadline: t.deadline, dir: t.dir, lat0, lon0, all: tps };
+    const task = { course, toff, gate: t.gate, deadline: t.deadline, stop: t.stop == null ? null : t.stop, dir: t.dir, lat0, lon0, all: tps };
     const KX = 111.32 * Math.cos(lat0 * Math.PI / 180), KY = 110.574;
     task.proj = (lat, lon) => [(lon - lon0) * KX, (lat - lat0) * KY];
     task.C = course.map(p => task.proj(p.lat, p.lon));
     task.R = course.map(p => p.radius);
     if (!task.dir) {
-      const [tx, ty] = task.proj(toff.lat, toff.lon);
-      task.dir = Math.hypot(tx - task.C[0][0], ty - task.C[0][1]) > task.R[0] ? "ENTER" : "EXIT";
+      // start direction: if the next turnpoint lies inside the start cylinder, the start is made by entering it, otherwise by leaving it
+      const s = course[0], n = course[1];
+      task.dir = geodist(s.lat, s.lon, n.lat, n.lon) < s.radius ? "ENTER" : "EXIT";
     }
     optimise(task);
     return task;
@@ -219,6 +221,11 @@
   function prepare(task, tracks, opt, progress) {
     opt = Object.assign({}, DEFAULTS, opt || {});
     const pilots = [];
+    // a stopped task: what was flown after the stop does not count
+    if (task.stop !== null) tracks = tracks.map(trk => {
+      if (!trk) return trk; let n = trk.t.length; while (n > 0 && trk.t[n - 1] > task.stop) n--;
+      return n < 100 ? null : { name: trk.name, t: trk.t.slice(0, n), lat: trk.lat.slice(0, n), lon: trk.lon.slice(0, n), z: trk.z.slice(0, n) };
+    });
     tracks.forEach((trk, i) => { if (trk) pilots.push(analyse(task, trk, opt.tol)); if (progress && i % 10 === 0) progress(i / tracks.length); });
     const started = pilots.filter(p => p.start !== null);
     if (!started.length) throw new Error("Aucun pilote n'a validé le start : vérifiez l'heure de la porte et le cylindre de start.");
@@ -399,7 +406,8 @@
     const essR = ok.filter(r => r.ess !== null);
     essR.forEach(r => { r.final = r.tau; });
     const lastEss = essR.length ? Math.max(...essR.map(r => r.final)) : null;
-    const base = opt.landedBase === "lastEss" && lastEss !== null ? lastEss : (task.deadline !== null ? task.deadline - gate : (lastEss || 0));
+    const close = task.stop !== null ? task.stop : task.deadline; // a stopped task closes at the stop
+    const base = opt.landedBase === "lastEss" && lastEss !== null ? lastEss : (close !== null ? close - gate : (lastEss || 0));
     ok.filter(r => r.ess === null).forEach(r => {
       r.dReal = Math.max(0, D - r.remLand);
       r.dCorr = Math.min(D, r.dReal + opt.eps * r.auto);
@@ -451,9 +459,9 @@
   function parseOfficialCsv(text) {
     const lines = String(text).trim().split(/\r?\n/); const head = lines.shift().split(/[,;\t]/).map(h => h.trim().toLowerCase());
     const col = re => head.findIndex(h => re.test(h));
-    const cn = col(/name|nom|pilot/), cl = col(/lead/), ct = col(/total/), cr = col(/rank|^#|^no$|place/);
+    const cn = col(/name|nom|pilot/), cl = col(/lead/), ct = col(/total/), cr = col(/rank|^#|^no$|place/), cs = col(/status|statut/);
     if (cn < 0) throw new Error("Le CSV officiel doit avoir une colonne name (nom du pilote).");
-    return lines.map(l => l.split(/[,;\t]/)).filter(c => c[cn]).map((c, k) => ({ name: c[cn].trim(), lead: cl >= 0 ? +c[cl] : null, total: ct >= 0 ? +c[ct] : null, rank: cr >= 0 ? +c[cr] : k + 1 }));
+    return lines.map(l => l.split(/[,;\t]/)).filter(c => c[cn]).map((c, k) => ({ name: c[cn].trim(), lead: cl >= 0 ? +c[cl] : null, total: ct >= 0 ? +c[ct] : null, rank: cr >= 0 ? +c[cr] : k + 1, status: cs >= 0 ? c[cs].trim().toUpperCase() : null }));
   }
   function spearman(a, b) {
     const rk = v => { const o = v.map((x, i) => [x, i]).sort((p, q) => p[0] - q[0]); const r = new Array(v.length); o.forEach((p, k) => { r[p[1]] = k; }); return r; };
@@ -462,7 +470,8 @@
     return num / Math.sqrt(da * db);
   }
   function compare(st, clk, official) {
-    const off = new Map(official.map(o => [norm(o.name), o]));
+    // compare the pilots at ESS on both sides (when the official file gives a status)
+    const off = new Map(official.filter(o => !o.status || o.status === "ESS" || o.status === "GOAL").map(o => [norm(o.name), o]));
     const rows = clk.ranking.filter(r => r.ess !== null && off.has(norm(r.name)));
     if (rows.length < 5) return { n: rows.length };
     const o = rows.map(r => off.get(norm(r.name)));

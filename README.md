@@ -99,6 +99,10 @@ python3 compare.py                   # comparison with the official results (bot
 
 The task definitions are in `wakefield/parse.py` (`TASKS`). Distances use a flat projection, about 0.2 to 0.5 % shorter than the official ellipsoid distances.
 
+## The whole competition
+
+All six valid tasks of PWC Gemona 2026 (task 1 was stopped and declared invalid) are in `data/gemona-2026/`, with their XCTrack QR codes and the official results. `node app/test/season.js data/gemona-2026 out.json` then `python3 app/test/report.py out.json data/gemona-2026 results/gemona-2026.html` rebuild the report [`results/gemona-2026.html`](results/gemona-2026.html): task by task comparison with the official results, and a first try at an overall ranking in time with a discard similar to the PWC's FTV (25 %).
+
 ## The application
 
 [`app/`](app/) is a browser application: load the task (XCTrack QR code or `.xctsk`), the IGC tracks (zip) and, optionally, the official results, then tune every parameter with sliders and watch the animated replay, the live leaderboard and the final ranking. Everything runs locally, in a Web Worker: no track leaves the computer. A field takes about 5 to 10 seconds for a task of 120 pilots; ε, the thermal-discovery bonus and the landed pilots' time base recompute instantly.
