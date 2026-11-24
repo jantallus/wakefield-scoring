@@ -56,6 +56,14 @@ Les replays animés sont dans [`replays/`](replays/).
 
 [`app/`](app/) est une application dans le navigateur : on y charge la manche (QR code XCTrack ou `.xctsk`), les traces IGC (zip) et, en option, le classement officiel, puis on règle chaque paramètre avec des curseurs. Elle affiche le replay animé, le leaderboard en direct et le classement final. Tout le calcul reste sur l'ordinateur. En ligne : **https://jantallus.github.io/wakefield-scoring/app/** (une fois GitHub Pages activé).
 
+## Pistes testées et écartées
+
+Principe : **ça doit rester une course, pas un concours de chasse au thermique.** Le leading récompense celui qui fait avancer la course, pas celui qui prend des options pour elles-mêmes. Ces pistes ont été testées sur Gemona et Baixo Guandu 2026, puis abandonnées :
+
+- **Bonus de découverte** (crédit pendant les montées là où personne n'avait marqué) : il payait le temps passé à enrouler, pas l'efficacité. Remplacé par la pénalité du suiveur, qui ne rapporte rien à celui qui marque, donc ne peut pas être exploitée en marquant pour de faux.
+- **Part reversée à l'ouvreur** (les suiveurs paient l'ouvreur du thermique, en racine du nombre de suiveurs, avec un seuil de taux de montée et une fenêtre de 10 min) : elle mesure la fréquentation, pas la prospection. Un thermique sur l'axe attire du monde parce qu'il est sur le trajet de tous. À Gemona manche 5, elle faisait passer Sassudelli, leader d'axe, devant Hamard, qui avait davantage cherché.
+- **Crédit de recherche latérale** (le déplacement de côté, seul dans le top 10, compté comme progrès si une bonne montée suit) : le déplacement latéral mélange virages et corrections de cap avec la vraie recherche, et il récompensait encore Sassudelli plus que Hamard. L'indicateur qui reconnaît bien les prospecteurs (temps de recherche hors de la ligne suivie par les autres) ne se calcule qu'après la manche, car cette ligne est tracée par ceux qui passent après.
+
 ## Contribuer
 
 Les idées, les critiques et le code sont les bienvenus : voir [CONTRIBUTING.md](CONTRIBUTING.md). Les issues peuvent être écrites en français ou en anglais.

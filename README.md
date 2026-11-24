@@ -122,6 +122,14 @@ Third-party code in `app/vendor/`: [JSZip](https://stuk.github.io/jszip/) (MIT) 
 
 `data/gemona-2026/` holds the public tracks and results of the PWC Gemona 2026 tasks 2 and 3, from the [PWCA scoring pages](https://scoring.pwca.org/gemona-2026/task2.html). See [data/README.md](data/README.md), including how a pilot can ask for their track to be removed.
 
+## Ideas tested and dropped
+
+Principle: **it must stay a race, not a thermal-hunting contest.** Leading rewards the pilot who makes the race go, not options taken for their own sake. These ideas were tested on Gemona and Baixo Guandu 2026 and dropped:
+
+- **Thermal-discovery bonus** (credit while climbing where nobody had marked): it paid time spent circling, not efficiency. Replaced by the follower penalty, which earns the marker nothing and so cannot be exploited by faking a thermal.
+- **Opener's share** (followers pay the pilot who opened the thermal, by the square root of their number, with a climb-rate threshold and a 10 min window): it measures traffic, not prospecting. A thermal on the course line draws pilots because it is on everyone's way. On Gemona task 5 it put Sassudelli, a course-line leader, ahead of Hamard, who had searched more.
+- **Lateral search credit** (sideways movement, alone in the top 10, counted as progress if a good climb follows): sideways movement mixes S-turns and heading corrections with real searching, and it still rewarded Sassudelli more than Hamard. The indicator that does recognise searchers (time spent searching away from the line the others follow) can only be computed after the task, since that line is drawn by the pilots who come later.
+
 ## Contributing
 
 Ideas, criticism and code are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
