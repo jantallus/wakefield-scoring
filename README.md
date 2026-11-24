@@ -101,7 +101,7 @@ The task definitions are in `wakefield/parse.py` (`TASKS`). Distances use a flat
 
 ## The whole competition
 
-All six valid tasks of PWC Gemona 2026 (task 1 was stopped and declared invalid) are in `data/gemona-2026/`, with their XCTrack QR codes and the official results. `node app/test/season.js data/gemona-2026 out.json` then `python3 app/test/report.py out.json data/gemona-2026 results/gemona-2026.html` rebuild the report [`results/gemona-2026.html`](results/gemona-2026.html): task by task comparison with the official results, and a first try at an overall ranking in time with a discard similar to the PWC's FTV (25 %).
+All six valid tasks of PWC Gemona 2026 (task 1 was stopped and declared invalid) are in `data/gemona-2026/`, with their XCTrack QR codes and the official results. `node app/test/season.js data/gemona-2026 out.json` then `python3 app/test/report.py out.json data/gemona-2026 results/gemona-2026.html` rebuild the report [`results/gemona-2026.html`](results/gemona-2026.html): task by task comparison with the official results, and an overall ranking in time: in each task a pilot's delay is their share behind the winner's corrected time, weighted by the official day quality and shown in minutes on a 2-hour reference task (1 % = 1.2 min); the PWC's FTV (25 %) then keeps each pilot's best tasks. On Gemona its rank correlation with the official overall ranking is 0.97, with the same winner.
 
 ## The application
 

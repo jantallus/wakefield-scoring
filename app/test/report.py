@@ -19,30 +19,55 @@ display = {n(o["name"]): o["name"] for o in overall}
 VAL = meta.get("validity", {})
 FTV = meta.get("ftv", 0.25)
 
-# --- overall in time: gap to each task's winner, FTV on validity ---
+# --- overall in time ---
+# For each task, a pilot's delay is r = corrected time / winner's corrected time - 1 (share behind the winner),
+# counted as DQ x r, where DQ is the task's day quality (official validity). Shown in minutes on a
+# reference task of REF_MIN minutes won in REF_MIN (1 % = REF_MIN / 100 minutes).
+# FTV: a pilot's tasks are sorted by r (best first) and added until their validities reach
+# (1 - FTV) x the sum of validities; the last task counts in part. Absent: the task's largest r.
+REF_MIN = 120
 tasks = [T["id"] for T in S]
 W = {t: VAL.get(t, 1.0) for t in tasks}
-gaps = {}
+rel = {}
 for T in S:
-    win = min(r["final"] for r in T["rows"]); worst = max(r["final"] for r in T["rows"]) - win
-    for k in offrank: gaps.setdefault(k, {})[T["id"]] = worst   # absent: the task's largest gap
-    for r in T["rows"]: gaps.setdefault(n(r["name"]), {})[T["id"]] = r["final"] - win
+    win = min(r["final"] for r in T["rows"])
+    worst = max(r["final"] for r in T["rows"]) / win - 1
+    for k in offrank: rel.setdefault(k, {})[T["id"]] = worst
+    for r in T["rows"]: rel.setdefault(n(r["name"]), {})[T["id"]] = r["final"] / win - 1
 def ftv(g):
     budget = sum(W.values()) * (1 - FTV); s = 0.0; kept = {}
     for t in sorted(tasks, key=lambda t: g[t]):
         take = min(W[t], budget)
         if take <= 0: break
-        s += g[t] * take / W[t]; kept[t] = take / W[t]; budget -= take
-    return s, kept
-names = [k for k in gaps if k in offrank]
-tot = {k: ftv(gaps[k]) for k in names}
+        s += take * g[t]; kept[t] = take / W[t]; budget -= take
+    return s * REF_MIN, kept          # minutes on the reference task
+names = [k for k in rel if k in offrank]
+tot = {k: ftv(rel[k]) for k in names}
 order = sorted(names, key=lambda k: tot[k][0])
-cum = {k: i + 1 for i, k in enumerate(sorted(names, key=lambda k: sum(gaps[k].values())))}
+cum = {k: i + 1 for i, k in enumerate(sorted(names, key=lambda k: sum(W[t] * rel[k][t] for t in tasks)))}
+# first try, for comparison: raw delays in seconds, tasks sorted by raw delay
+raw = {}
+for T in S:
+    win = min(r["final"] for r in T["rows"]); worst = max(r["final"] for r in T["rows"]) - win
+    for k in offrank: raw.setdefault(k, {})[T["id"]] = worst
+    for r in T["rows"]: raw.setdefault(n(r["name"]), {})[T["id"]] = r["final"] - win
+def ftv_raw(g):
+    budget = sum(W.values()) * (1 - FTV); s = 0.0
+    for t in sorted(tasks, key=lambda t: g[t]):
+        take = min(W[t], budget)
+        if take <= 0: break
+        s += g[t] * take / W[t]; budget -= take
+    return s
+first = {k: i + 1 for i, k in enumerate(sorted(names, key=lambda k: ftv_raw(raw[k])))}
 def spear(a, b):
     import numpy as np
     ks = list(a); x = np.argsort(np.argsort([a[k] for k in ks])); y = np.argsort(np.argsort([b[k] for k in ks])); return float(np.corrcoef(x, y)[0, 1])
 rk = {k: i + 1 for i, k in enumerate(order)}
-sp_ftv = spear({k: offrank[k] for k in names}, rk); sp_cum = spear({k: offrank[k] for k in names}, cum)
+offs = {k: offrank[k] for k in names}
+sp_ftv = spear(offs, rk); sp_cum = spear(offs, cum); sp_first = spear(offs, first)
+mean_abs = sum(abs(rk[k] - offrank[k]) for k in names) / len(names)
+same_top10 = len(set(order[:10]) & set(sorted(names, key=lambda k: offrank[k])[:10]))
+lead = tot[order[0]][0]
 
 # --- page ---
 rows = "".join(f"""<tr><td>{e(T['label'])}{' <span class="tag">arrêtée</span>' if T['stopped'] else ''}</td><td>{e(T['date'][5:].replace('-', '/'))}</td>
@@ -58,7 +83,7 @@ for T in S:
     details += f"""<details><summary>{e(T['label'])} · {e(T['date'])} : les 12 premiers en temps corrigé</summary><div class="scroll"><table class="stack"><thead><tr><th class="n">Wakefield</th><th class="n">Officiel</th><th class="n">Arrivée</th><th>Pilote</th><th class="n">Temps réel</th><th class="n">Temps corrigé</th><th class="n">Crédit</th><th class="n">Min dans le top 10</th></tr></thead><tbody>
 {''.join(f"<tr><td class='n'>{r['rank']}</td><td class='n'>{r['offRank'] or '—'}</td><td class='n'>{r['realRank']}</td><td>{e(r['name'])}</td><td class='n'>{fmt(r['ess'])}</td><td class='n'>{fmt(r['final'])}</td><td class='n'>{num(r['credit'] / 60, 1)} min</td><td class='n'>{r['top10']:.0f}</td></tr>" for r in ess)}
 </tbody></table></div></details>"""
-ov = "".join(f"<tr><td class='n'>{i + 1}</td><td class='n'>{offrank[k]}</td><td class='n'>{cum[k]}</td><td>{e(display[k])}</td><td class='n'>{num(tot[k][0] / 60, 1)} min</td><td>{', '.join(t.replace('task', 'M') for t in tasks if tot[k][1].get(t, 0) < 0.999)}</td></tr>" for i, k in enumerate(order[:15]))
+ov = "".join(f"<tr><td class='n'>{i + 1}</td><td class='n'>{offrank[k]}</td><td class='n'>{first[k]}</td><td>{e(display[k])}</td><td class='n'>{'—' if i == 0 else '+' + num((tot[k][0] - lead), 1) + ' min'}</td><td>{', '.join(t.replace('task', 'M') + ('' if tot[k][1].get(t, 0) < 1e-9 else ' (' + str(round((1 - tot[k][1][t]) * 100)) + ' %)') for t in tasks if tot[k][1].get(t, 0) < 0.999)}</td></tr>" for i, k in enumerate(order[:20]))
 
 page = f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Wakefield, Gemona 2026</title><link rel="icon" href="data:,">
@@ -94,10 +119,11 @@ table{{width:100%;border-collapse:collapse;font-size:15px}}th{{font-weight:500;c
 <div class="scroll"><table class="stack"><thead><tr><th>Manche</th><th>Date</th><th class="n">Start → ESS</th><th class="n">À l'ESS</th><th>Vainqueur officiel</th><th>Vainqueur Wakefield</th><th>Premier à l'ESS</th><th class="n">Rang officiel / Wakefield</th><th class="n">Rang officiel / arrivée</th></tr></thead><tbody>{rows}</tbody></table></div>
 <p class="notes">Les deux dernières colonnes sont des corrélations de rang chez les pilotes à l'ESS. En manche 4, le classement officiel s'écarte lui-même de l'ordre d'arrivée (0,78), d'où un écart plus grand avec Wakefield aussi.</p>
 {details}
-<h2>Classement général : un essai de FTV en temps</h2>
-<p class="lead">Pour chaque manche, chaque pilote reçoit son retard sur le vainqueur de la manche en temps corrigé (un posé, son retard en temps estimé ; un absent, le plus gros retard de la manche). Comme le FTV de la PWC ({FTV * 100:.0f} %), on ne garde que ses meilleures manches jusqu'à {(1 - FTV) * 100:.0f} % de la validité totale, la dernière en partie, et on additionne les retards. C'est une première piste, pas encore le modèle retenu.</p>
-<div class="kpi"><div class="w"><b>{num(sp_ftv)}</b>corrélation de rang avec le général officiel, avec FTV</div><div><b>{num(sp_cum)}</b>sans FTV (simple cumul des retards)</div></div>
-<div class="scroll"><table class="stack"><thead><tr><th class="n">Wakefield FTV</th><th class="n">Officiel</th><th class="n">Sans FTV</th><th>Pilote</th><th class="n">Retard cumulé</th><th>Manches écartées</th></tr></thead><tbody>{ov}</tbody></table></div>
+<h2>Classement général : retards en pourcentage, day quality et FTV officiels</h2>
+<p class="lead">Dans chaque manche, le retard d'un pilote est mesuré en pourcentage du temps corrigé du vainqueur, puis multiplié par la day quality officielle de la manche. Il est affiché en minutes sur une manche de référence de 2 h : 1 % de retard = 1,2 min. Comme le FTV de la PWC ({FTV * 100:.0f} %), chaque pilote garde ses meilleures manches jusqu'à {(1 - FTV) * 100:.0f} % de la validité totale, la dernière en partie. Un posé entre avec son temps estimé, un absent avec le plus gros retard de la manche.</p>
+<div class="kpi"><div class="w"><b>{num(sp_ftv)}</b>corrélation de rang avec le général officiel</div><div><b>{same_top10} / 10</b>pilotes en commun dans le top 10</div><div><b>{num(mean_abs, 1)}</b>places d'écart en moyenne</div><div><b>{num(sp_first)}</b>premier essai (retards bruts en minutes)</div><div><b>{num(sp_cum)}</b>sans FTV</div></div>
+<div class="scroll"><table class="stack"><thead><tr><th class="n">Wakefield</th><th class="n">Officiel</th><th class="n">1er essai</th><th>Pilote</th><th class="n">Retard</th><th>Manches écartées</th></tr></thead><tbody>{ov}</tbody></table></div>
+<p class="notes">Manches écartées : celles qui ne comptent pas, ou seulement en partie, au titre du FTV.</p>
 <h2>Méthode et limites</h2>
 <ul class="notes">
 <li>Données : traces IGC, QR codes des manches et résultats publiés par la PWCA ({e(meta['source'])}). La manche 1, arrêtée et déclarée invalide, n'est pas prise en compte.</li>
@@ -108,4 +134,6 @@ table{{width:100%;border-collapse:collapse;font-size:15px}}th{{font-weight:500;c
 <p class="notes">Généré par <code>app/test/season.js</code> et <code>app/test/report.py</code> du dépôt <a href="https://github.com/jantallus/wakefield-scoring">wakefield-scoring</a>.</p>
 </div></body></html>"""
 open(out, "w").write(page)
-print("written", out, "ftv corr %.2f cum %.2f" % (sp_ftv, sp_cum))
+print("written", out, "ftv corr %.2f (first try %.2f, no ftv %.2f), top10 common %d, mean abs %.1f" % (sp_ftv, sp_first, sp_cum, same_top10, mean_abs))
+for i, k in enumerate(order[:12]): print(i + 1, display[k], "off", offrank[k], "first", first[k], "%.1f" % (tot[k][0] - lead))
+print("Funiati", rk.get(n("Flavio Funiati")), offrank.get(n("Flavio Funiati")))
