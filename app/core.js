@@ -11,7 +11,9 @@
     sigB: 0.4,         // reach of a pilot behind you, km
     phi0: 8,           // field threshold: how much help counts as "helped"
     Tm: 240,           // wake memory, s
-    Tth: 900,          // thermal marker memory: how long a climbing point keeps marking the thermal, s
+    thGap: 60,         // a thermal cycle ends when nobody has climbed in it for this long, s
+    thR: 0.4,          // radius of a thermal: climbers closer than this to a marker keep it alive, km
+    thMax: 3600,       // longest life of a thermal marker, s
     keep: 720,         // how far back the trail is read, s
     trailW: 1,         // strength of the wake (trail points vs current positions)
     k: 2,              // angle exponent below the horizon (above: k / 2)
@@ -21,7 +23,7 @@
     disc: 0,           // thermal discovery bonus (experimental): share of the time spent climbing where nobody marked
     landedBase: "deadline" // or "lastEss"
   };
-  const FIELD_KEYS = ["tol", "sigA", "sigL0", "sigLk", "sigB", "phi0", "Tm", "Tth", "trailW", "k", "climbW", "sinkW"];
+  const FIELD_KEYS = ["tol", "sigA", "sigL0", "sigLk", "sigB", "phi0", "Tm", "thGap", "thR", "trailW", "k", "climbW", "sinkW"];
   const DT = 10, TR = 20, STEP = 20;
 
   /* ---------- task ---------- */
@@ -253,11 +255,36 @@
     return { task, pilots, grid, G, N, g0, X, Y, Z, S, AIR, CL, top5, top10, keep: KEEP };
   }
 
+  /* ---------- thermal cycles ----------
+     A point where a pilot climbs marks a thermal. The marker lives as long as the thermal is occupied:
+     each time step, if some pilot climbs within thR of it, it is still in use. Once nobody has climbed
+     there for thGap, the cycle is over and the marker dies (a later climb there starts a new cycle).
+     Returns, for each climbing grid point, the time its marker dies. */
+  function thermalDeaths(st, opt) {
+    const { G, N, X, Y, AIR, CL, grid } = st;
+    const DEATH = new Float64Array(N * G).fill(-Infinity), r2 = opt.thR * opt.thR;
+    let act = [];                 // active markers: [pilot index i, grid index g, x, y, lastSeen]
+    for (let h = 0; h < G; h++) {
+      const cx = [], cy = [];
+      for (let i = 0; i < N; i++) { const o = i * G + h; if (AIR[o] && CL[o]) { cx.push(X[o]); cy.push(Y[o]); act.push([i, h, X[o], Y[o], grid[h]]); } }
+      const keep = [];
+      for (const a of act) {
+        for (let q = 0; q < cx.length; q++) { const dx = cx[q] - a[2], dy = cy[q] - a[3]; if (dx * dx + dy * dy <= r2) { a[4] = grid[h]; break; } }
+        if (grid[h] - a[4] > opt.thGap || grid[h] - grid[a[1]] > opt.thMax) DEATH[a[0] * G + a[1]] = Math.min(a[4] + opt.thGap, grid[a[1]] + opt.thMax);
+        else keep.push(a);
+      }
+      act = keep;
+    }
+    for (const a of act) DEATH[a[0] * G + a[1]] = Infinity;
+    return DEATH;
+  }
+
   /* ---------- field ---------- */
   function computeField(st, opt, progress) {
     opt = Object.assign({}, DEFAULTS, opt || {});
     const { G, N, g0, X, Y, Z, S, AIR, CL, grid } = st;
-    const lag = Math.round(TR / DT), keepTh = Math.max(opt.keep, 2 * opt.Tth), nlag = Math.round(keepTh / TR);
+    const DEATH = thermalDeaths(st, opt);
+    const lag = Math.round(TR / DT), keepTh = Math.max(opt.keep, opt.thMax), nlag = Math.round(keepTh / TR), nKeep = Math.round(opt.keep / TR);
     const GV = new Float32Array(N * G);
     const sA2 = opt.sigA * opt.sigA, sB2 = opt.sigB * opt.sigB, rA = 3 * opt.sigA, rB2 = 9 * sB2;
     const kb = opt.k / 2, ka = opt.k / 4;
@@ -268,12 +295,19 @@
       for (let j = 0; j <= nlag; j++) {
         const idx = gi - j * lag; if (idx < 0) break;
         const age = grid[gi] - grid[idx];
-        // transitions fade with the wake memory Tm; climbing points (a marked thermal) with Tth
-        const nrm = j === 0 ? 1 : (TR / opt.Tm) * opt.trailW;
-        const wCl = nrm * Math.exp(-age / opt.Tth) * opt.climbW, wTr = age <= opt.keep ? nrm * Math.exp(-age / opt.Tm) * opt.sinkW : 0;
+        // the wake (every point) fades with Tm over the last `keep` seconds; a climbing point also
+        // keeps marking its thermal at full weight until that thermal's cycle ends (thermalDeaths).
+        // Old markers are read one trail step in three, with three times the weight.
+        const old = j > nKeep;
+        if (old && j % 3) continue;
+        const nrm = j === 0 ? 1 : (TR / opt.Tm) * opt.trailW * (old ? 3 : 1);
+        const wake = old ? 0 : Math.exp(-age / opt.Tm);
         for (let i = 0; i < N; i++) {
           const o = i * G + idx; if (!AIR[o]) continue;
-          const w = CL[o] ? wCl : wTr; if (w <= 0) continue;
+          let w;
+          if (CL[o]) w = nrm * opt.climbW * (DEATH[o] > grid[gi] ? 1 : wake);
+          else w = nrm * opt.sinkW * wake;
+          if (w <= 0) continue;
           sx[m] = X[o]; sy[m] = Y[o]; sz[m] = Z[o]; ss[m] = S[o]; sw[m] = w; so[m] = i; m++;
         }
       }
@@ -304,6 +338,7 @@
       }
       if (progress && (gi - g0) % 25 === 0) progress((gi - g0) / (G - g0));
     }
+    GV.death = DEATH; // kept for the replay
     return GV;
   }
 
@@ -371,7 +406,7 @@
     const out = [];
     pilots.forEach((p, i) => {
       const r = byI.get(i); if (!r) return;
-      const P = { n: p.name, x: [], y: [], z: [], g: [], r: [], p: [], s: [], ess: r.ess, fin: Math.round(r.final), auto: +r.auto.toFixed(1), rem: +r.remLand.toFixed(1), dReal: r.dReal, dCorr: r.dCorr };
+      const P = { n: p.name, x: [], y: [], z: [], g: [], r: [], p: [], s: [], th: [], ess: r.ess, fin: Math.round(r.final), auto: +r.auto.toFixed(1), rem: +r.remLand.toFixed(1), dReal: r.dReal, dCorr: r.dCorr };
       let last = [p.x[0], p.y[0], p.z[0]];
       gIdx.forEach((g, k) => {
         const o = i * G + g, t = frames[k];
@@ -382,6 +417,9 @@
         P.g.push(Math.round((AIR[o] ? GV[o] : 1) * 100));
         P.r.push(s === 1 && !Number.isNaN(clk.RATE[o]) ? Math.round(clk.RATE[o] * 100) : 0);
         const pr = clk.PROJ[o]; P.p.push(Math.round(Number.isNaN(pr) ? r.final : pr)); P.s.push(s);
+        // thermal marker: -1 if not climbing, else the frame where its cycle ends
+        const dth = GV.death ? GV.death[o] : -Infinity;
+        P.th.push(AIR[o] && st.CL[o] && dth > -Infinity ? (dth === Infinity ? 1e6 : Math.round((dth - task.gate) / STEP)) : -1);
       });
       out.push(P);
     });
@@ -422,6 +460,6 @@
     return out;
   }
 
-  const api = { DEFAULTS, FIELD_KEYS, DT, parseXctsk, normaliseTask, parseWpt, parseIGC, prepare, computeField, computeClock, buildReplay, parseOfficialCsv, compare, norm, spearman, decodePolyline, geodist };
+  const api = { DEFAULTS, FIELD_KEYS, DT, parseXctsk, normaliseTask, parseWpt, parseIGC, prepare, computeField, computeClock, buildReplay, parseOfficialCsv, compare, norm, spearman, decodePolyline, geodist, thermalDeaths };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.Wakefield = api;
 })(typeof self !== "undefined" ? self : this);

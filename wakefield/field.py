@@ -9,8 +9,9 @@ PHI0 = float(sys.argv[2]) if len(sys.argv) > 2 else 0.8
 PHI0_DEF, SIG_A, SIG_L0, SIG_LK, SIG_B, TM, KEEP = 0.8, 3.0, 0.6, 0.22, 0.4, 240.0, 720.0
 DT, TR = 10.0, 20.0      # grid step, trail step (s)
 LANDPEN = 2.0
-TTH = float(sys.argv[3]) if len(sys.argv) > 3 else 900.0  # thermal marker memory (s)
-KEEPTH = max(KEEP, 2 * TTH)       # how far back climbing points are read
+TH_GAP = float(sys.argv[3]) if len(sys.argv) > 3 else 60.0  # a thermal cycle ends when nobody has climbed in it for this long (s)
+TH_R, TH_MAX = 0.4, 3600.0         # thermal radius (km), longest life of a marker (s)
+KEEPTH = max(KEEP, TH_MAX)         # how far back climbing points are read
 BACK = 3600.0                     # grid starts this long before the gate
 
 ess_times = [p["ess"] - GATE for p in pilots if p["ess"]]
@@ -29,20 +30,40 @@ for i, p in enumerate(pilots):
     z20 = np.interp(grid - 20, t, p["z"])
     CL[i] = (Z[i] - z20) / 20 > 0.3
 
+# Thermal cycles: a climbing point marks a thermal as long as someone climbs within TH_R of it;
+# once nobody has for TH_GAP, the cycle is over and the marker dies (same algorithm as app/core.js).
+DEATH = np.full((N, G), -np.inf)
+ai = np.zeros(0, int); ag = np.zeros(0, int); ax = np.zeros(0); ay = np.zeros(0); last = np.zeros(0)
+for h in range(G):
+    cm = AIR[:, h] & CL[:, h]
+    new = np.where(cm)[0]
+    ai = np.r_[ai, new]; ag = np.r_[ag, np.full(len(new), h)]; ax = np.r_[ax, X[new, h]]; ay = np.r_[ay, Y[new, h]]; last = np.r_[last, np.full(len(new), grid[h])]
+    if len(ai) == 0: continue
+    cx, cy = X[cm, h].astype(np.float64), Y[cm, h].astype(np.float64)
+    if len(cx):
+        seen = ((ax[:, None] - cx[None]) ** 2 + (ay[:, None] - cy[None]) ** 2 <= TH_R * TH_R).any(1)
+        last[seen] = grid[h]
+    dead = (grid[h] - last > TH_GAP) | (grid[h] - grid[ag] > TH_MAX)
+    DEATH[ai[dead], ag[dead]] = np.minimum(last[dead] + TH_GAP, grid[ag[dead]] + TH_MAX)
+    keep = ~dead; ai, ag, ax, ay, last = ai[keep], ag[keep], ax[keep], ay[keep], last[keep]
+DEATH[ai, ag] = np.inf
+
 g0 = int(BACK / DT)                     # index of GATE in grid
-lag = int(TR / DT); nlag = int(KEEPTH / TR)
+lag = int(TR / DT); nlag = int(KEEPTH / TR); nkeep = int(KEEP / TR)
+jj = np.arange(nlag + 1); jj = jj[(jj <= nkeep) | (jj % 3 == 0)]   # old markers: one trail step in three
 GV = np.zeros((N, G), np.float32)       # g per pilot per step
 for gi in range(g0, G):
-    idx = gi - np.arange(nlag + 1) * lag    # current + trail
-    idx = idx[idx >= 0]
+    idx = gi - jj * lag    # current + trail
+    jv = jj[idx >= 0]; idx = idx[idx >= 0]
     age = (grid[gi] - grid[idx]).astype(np.float32)
     sx, sy, sz, ss = X[:, idx], Y[:, idx], Z[:, idx], S[:, idx]
     ok = AIR[:, idx]
-    # transitions fade with the wake memory TM; climbing points (a marked thermal) with TTH
-    nrm = np.where(age == 0, 1.0, TR / TM).astype(np.float32)[None, :]
-    w_cl = nrm * np.exp(-age / TTH).astype(np.float32)[None, :]
-    w_tr = nrm * 0.35 * np.exp(-age / TM).astype(np.float32)[None, :] * (age <= KEEP)[None, :]
-    w = np.where(CL[:, idx], w_cl, w_tr) * ok
+    # the wake fades with TM over KEEP; a climbing point also marks its thermal at full weight until the cycle ends
+    old = jv > nkeep
+    nrm = np.where(jv == 0, 1.0, TR / TM * np.where(old, 3.0, 1.0))[None, :]
+    wake = np.where(old, 0.0, np.exp(-age / TM))[None, :]
+    alive = DEATH[:, idx] > grid[gi]
+    w = np.where(CL[:, idx], nrm * np.where(alive, 1.0, wake), nrm * 0.35 * wake) * ok
     obs = np.where(AIR[:, gi])[0]
     if len(obs) == 0: continue
     src = ok.ravel()

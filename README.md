@@ -21,7 +21,7 @@ Being low and in front is rewarded (courage), being high and in front too (therm
 For pilot *i* at time *t*, the field sums every other pilot *j*, at their current position and over their recent track:
 
 ```
-Φᵢ(t) = Σⱼ ∫ K(r) · A(θ) · M(v_z) · e^(−δ/T) dδ      (T = T_th where j was climbing, T_m elsewhere)
+Φᵢ(t) = Σⱼ ∫ K(r) · A(θ) · M(v_z) · e^(−δ/T) dδ      (plus, where j was climbing, a full-weight marker while that thermal is still occupied)
 g     = 1 − e^(−Φ / Φ₀)               (0 = alone, 1 = fully helped)
 dτ/dt = 1 − ε · (1 − g) · max(0, v_prog) / v_ref
 ```
@@ -32,7 +32,7 @@ dτ/dt = 1 − ε · (1 − g) · max(0, v_prog) / v_ref
 | A(θ) | Viewing angle: 1 towards the horizon, 0 at the vertical (a gaggle right above you does not help you) | cos θ above, cos² θ below |
 | M(v_z) | Track points where the pilot was climbing weigh more (a marked thermal) | 1 vs 0.35 |
 | T_m | Memory of the wake | 4 min |
-| T_th | Memory of a thermal marker: a point where a pilot was climbing keeps helping the pilots who come to use that thermal later (read up to 2 × T_th back) | 15 min |
+| Thermal cycle | A point where a pilot was climbing keeps marking the thermal, at full weight, for as long as the thermal is occupied: it stays alive while someone climbs within 0.4 km of it, and dies once nobody has for 60 s (at most 1 h) | 60 s, 0.4 km |
 | Φ₀ | How much help counts as "helped" | 8 |
 | ε | Price of risk: the most time a fully led task can earn (ε × distance / v_ref) | 0.15 |
 | v_ref | Reference speed: median speed of pilots at ESS | per task |
