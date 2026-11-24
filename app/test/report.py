@@ -79,7 +79,7 @@ bars = "".join(f"""<div class="bt">{e(T['label'])}</div>
 mean = lambda k: sum(T[k] for T in S) / len(S)
 details = ""
 for T in S:
-    ess = [r for r in T["rows"] if r["ess"] is not None][:12]
+    ess = [r for r in T["rows"] if r["ess"] is not None and r.get("goal", True)][:12]
     details += f"""<details><summary>{e(T['label'])} · {e(T['date'])} : les 12 premiers en temps corrigé</summary><div class="scroll"><table class="stack"><thead><tr><th class="n">Wakefield</th><th class="n">Officiel</th><th class="n">Arrivée</th><th>Pilote</th><th class="n">Temps réel</th><th class="n">Temps corrigé</th><th class="n">Crédit</th><th class="n">Min dans le top 10</th></tr></thead><tbody>
 {''.join(f"<tr><td class='n'>{r['rank']}</td><td class='n'>{r['offRank'] or '—'}</td><td class='n'>{r['realRank']}</td><td>{e(r['name'])}</td><td class='n'>{fmt(r['ess'])}</td><td class='n'>{fmt(r['final'])}</td><td class='n'>{num(r['credit'] / 60, 1)} min</td><td class='n'>{r['top10']:.0f}</td></tr>" for r in ess)}
 </tbody></table></div></details>"""
@@ -116,7 +116,7 @@ table{{width:100%;border-collapse:collapse;font-size:15px}}th{{font-weight:500;c
 <p class="lead">Corrélation de rang (pilotes à l'ESS) entre le temps passé parmi les 10 premiers de la course et, d'un côté les points de leading GAP, de l'autre le crédit Wakefield. 1 = même ordre.</p>
 <div class="bars">{bars}</div>
 <h2>Manche par manche</h2>
-<div class="scroll"><table class="stack"><thead><tr><th>Manche</th><th>Date</th><th class="n">Start → ESS</th><th class="n">À l'ESS</th><th>Vainqueur officiel</th><th>Vainqueur Wakefield</th><th>Premier à l'ESS</th><th class="n">Rang officiel / Wakefield</th><th class="n">Rang officiel / arrivée</th></tr></thead><tbody>{rows}</tbody></table></div>
+<div class="scroll"><table class="stack"><thead><tr><th>Manche</th><th>Date</th><th class="n">Start → ESS</th><th class="n">Au but</th><th>Vainqueur officiel</th><th>Vainqueur Wakefield</th><th>Premier à l'ESS</th><th class="n">Rang officiel / Wakefield</th><th class="n">Rang officiel / arrivée</th></tr></thead><tbody>{rows}</tbody></table></div>
 <p class="notes">Les deux dernières colonnes sont des corrélations de rang chez les pilotes à l'ESS. En manche 4, le classement officiel s'écarte lui-même de l'ordre d'arrivée (0,78), d'où un écart plus grand avec Wakefield aussi.</p>
 {details}
 <h2>Classement général : retards en pourcentage, day quality et FTV officiels</h2>

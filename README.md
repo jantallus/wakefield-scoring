@@ -59,7 +59,9 @@ dτ/dt = 1 − ε · (1 − g) · max(0, v_prog) / v_ref
 
 The clock is computed only from present and past positions, so it can run live from live tracking. During the task the leaderboard shows a projected time: `τ(t) + remaining distance / v_ref`, which becomes the final corrected time at ESS.
 
-**Pilots who land before ESS** are always ranked behind every pilot at ESS. They get a corrected distance, `distance + ε × km flown autonomously`, capped at the task distance (ties: the longer real distance wins), converted to an estimated time: `time until task deadline + (task distance − corrected distance) / v_ref`.
+**Goal.** The clock stops at ESS, so that nobody races flat out to the ground between ESS and goal, but the task is only accomplished in goal. A pilot who reaches ESS and not goal (in flight) is ranked like a pilot landed just before goal.
+
+**Pilots who land before goal** are always ranked behind every pilot in goal. They get a corrected distance, `distance + ε × km flown autonomously`, capped at the task distance (ties: the longer real distance wins), converted to an estimated time: `time until task deadline + (task distance − corrected distance) / v_ref`.
 
 Cylinders are validated on the WGS84 ellipsoid with the 0.5 % radius tolerance (FAI category 2). Progress along the course uses a flat projection.
 

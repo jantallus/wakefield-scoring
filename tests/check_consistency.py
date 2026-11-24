@@ -32,10 +32,10 @@ pe = {k for k, r in P.items() if r["ess"] is not None}; je = {k for k, r in J.it
 if pe != je:
     errors.append("pilots at ESS differ: only Python %s, only JS %s" % (sorted(pe - je), sorted(je - pe)))
 common = sorted(pe & je)
-worst_t = max((abs(P[k]["final"] - J[k]["final"]), k) for k in common)
+worst_t = max((abs(P[k]["final"] - J[k]["tau"]), k) for k in common)   # corrected time at ESS (the JS ranks pilots who miss goal with the landed ones)
 if worst_t[0] > TIME_TOL:
     errors.append("corrected time of %s differs by %.1f s" % (worst_t[1], worst_t[0]))
-rho = spearman([P[k]["final"] for k in common], [J[k]["final"] for k in common])
+rho = spearman([P[k]["final"] for k in common], [J[k]["tau"] for k in common])
 if rho < RANK_MIN:
     errors.append("rank correlation at ESS %.4f < %.3f" % (rho, RANK_MIN))
 landed = sorted(k for k in P if k in J and P[k]["ess"] is None and J[k]["ess"] is None)

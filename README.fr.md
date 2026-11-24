@@ -42,7 +42,8 @@ Les formules et les paramètres sont détaillés dans le [README en anglais](REA
 - **Le champ** additionne les autres pilotes et leurs traces des dernières minutes, dans un cône orienté vers l'avant, pondéré par l'angle de vue (un gaggle à ta verticale ne t'aide pas) et par le fait qu'ils montaient.
 - **La remontée** : si tu vas plus vite que ceux qui te montrent le chemin, la différence est à toi. Un pilote qui remonte à 30 km/h derrière un gaggle qui avance à 20 km/h voit un tiers de sa progression comptée comme autonome ; un suiveur au rythme du gaggle ne gagne rien. Une erreur en début de manche ne coûte donc que le temps perdu.
 - **L'horloge** : `dτ/dt = 1 − ε · (1 − g) · v_prog / v_ref`. Le crédit est borné à ε × distance / v_ref, donc un pilote lent ne peut pas gagner plus d'avance qu'un pilote rapide.
-- **Les pilotes posés** passent toujours derrière tous les pilotes à l'ESS. Leur distance corrigée (distance + ε × km autonomes, plafonnée à la distance de la manche, la distance réelle départageant les égalités) est convertie en temps estimé : durée jusqu'à la deadline + distance manquante / v_ref.
+- **Le but.** Le chrono s'arrête à l'ESS, pour que personne ne fasse la course à pleine vitesse jusqu'au sol, mais la mission n'est accomplie qu'au but. Un pilote arrivé à l'ESS sans atteindre le but en vol est classé comme un posé juste avant le but.
+- **Les pilotes posés** passent toujours derrière tous les pilotes au but. Leur distance corrigée (distance + ε × km autonomes, plafonnée à la distance de la manche, la distance réelle départageant les égalités) est convertie en temps estimé : durée jusqu'à la deadline + distance manquante / v_ref.
 
 ## Premiers résultats : PWC Gemona 2026, manches 2 et 3
 

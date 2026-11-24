@@ -64,8 +64,10 @@
       if (j.sss) { gate = hms((j.sss.timeGates || [])[0]); dir = j.sss.direction || null; }
       if (j.goal) deadline = hms(j.goal.deadline);
     }
-    // first point of a v2 task is take-off
+    // first point of a v2 task is take-off; a point after ESS is the goal
     if (tps.length && tps[0].type === "TURN" && j.version === 2) tps[0].type = "TAKEOFF";
+    const e = tps.findIndex(p => p.type === "ESS");
+    if (e >= 0) for (let q = e + 1; q < tps.length; q++) if (tps[q].type === "TURN") tps[q].type = "GOAL";
     return normaliseTask({ tps, gate, deadline, dir });
   }
   /* Keep take-off, then SSS ... ESS; points after ESS (goal) are ignored by the clock. */
@@ -78,7 +80,9 @@
     if (!toff) toff = tps[0];
     const lat0 = course.reduce((a, p) => a + p.lat, 0) / course.length;
     const lon0 = course.reduce((a, p) => a + p.lon, 0) / course.length;
-    const task = { course, toff, gate: t.gate, deadline: t.deadline, stop: t.stop == null ? null : t.stop, dir: t.dir, lat0, lon0, all: tps };
+    // the goal: the first point after ESS (none: ESS is the goal)
+    const goal = tps.slice(ei + 1).find(p => p.type === "GOAL" || p.type === "TURN") || null;
+    const task = { course, toff, goal, gate: t.gate, deadline: t.deadline, stop: t.stop == null ? null : t.stop, dir: t.dir, lat0, lon0, all: tps };
     const KX = 111.32 * Math.cos(lat0 * Math.PI / 180), KY = 110.574;
     task.proj = (lat, lon) => [(lon - lon0) * KX, (lat - lat0) * KY];
     task.C = course.map(p => task.proj(p.lat, p.lon));
@@ -213,7 +217,21 @@
       if (sp > 15) { if (!seen) { off = trk.t[i]; seen = true; } land = trk.t[i]; }
     }
     const ess = tags.length === nc - 1 ? tags[tags.length - 1] : null;
-    return { name: trk.name, t: trk.t, x, y, z: trk.z, start: start_i === null ? null : trk.t[start_i], tags, ess, tOff: off, tLand: land };
+    // goal: after ESS, the pilot must still reach the goal (no timing there). Without a goal point, ESS is the goal.
+    let goal = ess !== null && !task.goal;
+    if (ess !== null && task.goal) {
+      const gl = task.goal, rg = gl.radius * (1 + tol);
+      // the goal must be reached in flight: stop at the first minute spent on the ground after ESS
+      // (ground speed under 5 km/h and climb or sink under 0.5 m/s for 60 s)
+      let still = null;
+      for (let j = 1; j < n; j++) {
+        if (trk.t[j] < ess) continue;
+        if (geodist(trk.lat[j], trk.lon[j], gl.lat, gl.lon) <= rg) { goal = true; break; }
+        const dt = trk.t[j] - trk.t[j - 1], sp = Math.hypot(x[j] - x[j - 1], y[j] - y[j - 1]) / dt * 3600, vz = Math.abs(trk.z[j] - trk.z[j - 1]) / dt;
+        if (sp < 5 && vz < 0.5) { if (still === null) still = trk.t[j - 1]; if (trk.t[j] - still >= 60) break; } else still = null;
+      }
+    }
+    return { name: trk.name, t: trk.t, x, y, z: trk.z, start: start_i === null ? null : trk.t[start_i], tags, ess, goal, tOff: off, tLand: land };
   }
   function kAt(p, time) { if (p.start === null || time < p.start) return 0; let k = 1; for (const tg of p.tags) if (tg <= time) k++; return k; }
 
@@ -249,7 +267,7 @@
         }
       }
       const li = Math.max(0, p.t.findIndex(v => v >= p.tLand));
-      p.remLand = p.ess ? 0 : remDist(task, p.x[li], p.y[li], kAt(p, p.tLand));
+      p.remLand = p.ess ? 0 : remDist(task, p.x[li], p.y[li], kAt(p, p.tLand)); // a pilot at ESS without goal: the whole distance, no more
       if (progress && i % 10 === 0) progress(0.5 + 0.5 * i / N);
     });
     const g0 = Math.round(KEEP / DT);
@@ -400,24 +418,26 @@
         const rem = AIR[o] ? Math.max(0, D - S[o]) : p.remLand;
         PROJ[o] = tau + rem / vref * 3600;
       }
-      return { i, name: p.name, ess: p.ess ? p.ess - gate : null, tau, auto, disc, remLand: p.remLand, tStop };
+      return { i, name: p.name, ess: p.ess ? p.ess - gate : null, goal: p.goal, tau, auto, disc, remLand: p.remLand, tStop };
     });
     const ok = res.filter(Boolean);
-    const essR = ok.filter(r => r.ess !== null);
+    // only pilots in goal keep their time; a pilot at ESS who did not reach goal is ranked with the landed pilots
+    const essR = ok.filter(r => r.ess !== null && r.goal);
     essR.forEach(r => { r.final = r.tau; });
     const lastEss = essR.length ? Math.max(...essR.map(r => r.final)) : null;
     const close = task.stop !== null ? task.stop : task.deadline; // a stopped task closes at the stop
     const base = opt.landedBase === "lastEss" && lastEss !== null ? lastEss : (close !== null ? close - gate : (lastEss || 0));
-    ok.filter(r => r.ess === null).forEach(r => {
+    const notGoal = ok.filter(r => !(r.ess !== null && r.goal));
+    notGoal.forEach(r => {
       r.dReal = Math.max(0, D - r.remLand);
       r.dCorr = Math.min(D, r.dReal + opt.eps * r.auto);
       r.final = base + (D - r.dCorr) / vref * 3600;
     });
-    ok.forEach(r => { r.credit = r.ess !== null ? r.ess - r.final : null; });
+    ok.forEach(r => { r.credit = r.ess !== null && r.goal ? r.ess - r.final : null; });
     // freeze projections after the stop
     ok.forEach(r => { for (let gi = 0; gi < G; gi++) if (grid[gi] >= r.tStop) PROJ[r.i * G + gi] = r.final; });
     const ranking = essR.slice().sort((a, b) => a.final - b.final)
-      .concat(ok.filter(r => r.ess === null).sort((a, b) => (b.dCorr - a.dCorr) || (b.dReal - a.dReal)));
+      .concat(notGoal.sort((a, b) => (b.dCorr - a.dCorr) || (b.dReal - a.dReal) || (a.tau - b.tau)));
     ranking.forEach((r, k) => { r.rank = k + 1; });
     essR.slice().sort((a, b) => a.ess - b.ess).forEach((r, k) => { r.realRank = k + 1; });
     return { vref, D, base, lastEss, ranking, PROJ, RATE, maxCredit: opt.eps * D / vref * 3600 };
@@ -433,12 +453,12 @@
     const out = [];
     pilots.forEach((p, i) => {
       const r = byI.get(i); if (!r) return;
-      const P = { n: p.name, x: [], y: [], z: [], g: [], r: [], p: [], s: [], th: [], ess: r.ess, fin: Math.round(r.final), auto: +r.auto.toFixed(1), rem: +r.remLand.toFixed(1), dReal: r.dReal, dCorr: r.dCorr };
+      const P = { n: p.name, x: [], y: [], z: [], g: [], r: [], p: [], s: [], th: [], goal: !!p.goal, ess: r.goal ? r.ess : null, essNoGoal: r.ess !== null && !r.goal ? r.ess : null, fin: Math.round(r.final), auto: +r.auto.toFixed(1), rem: +r.remLand.toFixed(1), dReal: r.dReal, dCorr: r.dCorr };
       let last = [p.x[0], p.y[0], p.z[0]];
       gIdx.forEach((g, k) => {
         const o = i * G + g, t = frames[k];
         let s = AIR[o] ? 1 : 3;
-        if (p.ess && t >= p.ess) s = 2; else if (t > p.tLand) s = 3;
+        if (p.ess && t >= p.ess && (p.goal || t <= p.tLand)) s = 2; else if (t > p.tLand) s = 3;
         if (AIR[o]) last = [X[o], Y[o], Z[o]];
         P.x.push(Math.round(last[0] * 100)); P.y.push(Math.round(last[1] * 100)); P.z.push(Math.round(last[2] / 10));
         P.g.push(Math.round((AIR[o] ? GV[o] : 1) * 100));
@@ -471,8 +491,8 @@
   }
   function compare(st, clk, official) {
     // compare the pilots at ESS on both sides (when the official file gives a status)
-    const off = new Map(official.filter(o => !o.status || o.status === "ESS" || o.status === "GOAL").map(o => [norm(o.name), o]));
-    const rows = clk.ranking.filter(r => r.ess !== null && off.has(norm(r.name)));
+    const off = new Map(official.filter(o => !o.status || o.status === "GOAL").map(o => [norm(o.name), o]));
+    const rows = clk.ranking.filter(r => r.ess !== null && r.goal && off.has(norm(r.name)));
     if (rows.length < 5) return { n: rows.length };
     const o = rows.map(r => off.get(norm(r.name)));
     const offRank = rows.map((r, k) => o[k].total !== null && !Number.isNaN(o[k].total) ? -o[k].total : o[k].rank);

@@ -21,10 +21,10 @@ const meta = JSON.parse(fs.readFileSync(path.join(dir, "tasks.json"), "utf8"));
     const cmp = W.compare(st, clk, off);
     const offMap = new Map(off.map(o => [W.norm(o.name), o]));
     const offWinner = off.slice().sort((a, b) => b.total - a.total)[0];
-    const ess = clk.ranking.filter(r => r.ess !== null);
-    const rows = clk.ranking.map(r => { const o = offMap.get(W.norm(r.name)); return { name: r.name, rank: r.rank, realRank: r.realRank || null, ess: r.ess, final: Math.round(r.final), credit: r.credit, dReal: r.dReal ?? null, dCorr: r.dCorr ?? null, top10: st.top10[r.i] / 60, offRank: o ? o.rank : null, offLead: o ? o.lead : null, offTotal: o ? o.total : null }; });
+    const ess = clk.ranking.filter(r => r.ess !== null && r.goal);
+    const rows = clk.ranking.map(r => { const o = offMap.get(W.norm(r.name)); return { name: r.name, rank: r.rank, realRank: r.realRank || null, ess: r.ess, goal: !!r.goal, final: Math.round(r.final), credit: r.credit, dReal: r.dReal ?? null, dCorr: r.dCorr ?? null, top10: st.top10[r.i] / 60, offRank: o ? o.rank : null, offLead: o ? o.lead : null, offTotal: o ? o.total : null }; });
     const moved = ess.filter(r => r.rank !== r.realRank).length;
-    const res = { id: m.id, label: m.label, date: m.date, stopped: !!m.stopUtc, D: clk.D, vref: clk.vref, maxCredit: clk.maxCredit, pilots: clk.ranking.length, ess: ess.length,
+    const res = { id: m.id, label: m.label, date: m.date, stopped: !!m.stopUtc, D: clk.D, vref: clk.vref, maxCredit: clk.maxCredit, pilots: clk.ranking.length, ess: ess.length, essNoGoal: clk.ranking.filter(r => r.ess !== null && !r.goal).map(r => r.name),
       winnerOfficial: offWinner.name, winnerWakefield: ess[0] ? ess[0].name : null, firstAtEss: ess.slice().sort((a, b) => a.ess - b.ess)[0]?.name || null,
       spearmanOfficial: cmp.officialVsWakefield, spearmanOfficialArrival: cmp.officialVsArrival, top10VsLead: cmp.top10VsLead, top10VsCredit: cmp.top10VsCredit, compared: cmp.n, moved, rows };
     out.push(res);

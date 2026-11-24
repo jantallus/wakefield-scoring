@@ -13,7 +13,7 @@ const [taskFile, zipFile, outFile] = process.argv.slice(2);
   const st = W.prepare(task, tracks.filter(Boolean));
   const GV = W.computeField(st, {});
   const clk = W.computeClock(st, GV, {});
-  const ranking = clk.ranking.map(r => ({ name: r.name, ess: r.ess, final: r.final, auto: r.auto, dReal: r.dReal ?? null, dCorr: r.dCorr ?? null }));
+  const ranking = clk.ranking.map(r => ({ name: r.name, ess: r.ess, goal: !!r.goal, tau: r.tau, final: r.final, auto: r.auto, dReal: r.dReal ?? null, dCorr: r.dCorr ?? null }));
   fs.writeFileSync(outFile, JSON.stringify({ D: clk.D, vref: clk.vref, ranking }));
   console.log("%s: %d pilots, %d at ESS, D %s km, v_ref %s km/h", outFile, ranking.length, ranking.filter(r => r.ess !== null).length, clk.D.toFixed(2), clk.vref.toFixed(1));
 })().catch(e => { console.error(e); process.exit(1); });

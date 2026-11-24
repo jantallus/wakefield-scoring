@@ -144,10 +144,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 <h2>4. Résultats</h2>
 <div class="kpi" id="kpi"><div>Aucun calcul pour l'instant.</div></div>
 <div id="cmp"></div>
-<h3>Pilotes à l'ESS</h3>
+<h3>Pilotes au but</h3>
 <div class="scroll"><table id="fin"><thead><tr><th class="n">Place</th><th class="n">Arrivée</th><th></th><th>Pilote</th><th class="n">Temps réel</th><th class="n">Temps corrigé</th><th class="n">Crédit</th><th class="n">Km autonomes</th><th class="n">Min dans le top 10</th></tr></thead><tbody></tbody></table></div>
-<h3 style="margin-top:18px">Pilotes posés</h3>
-<p class="hint">Toujours derrière les pilotes à l'ESS. Distance corrigée = distance + ε × km autonomes, plafonnée à la distance de la manche ; la distance réelle départage les égalités.</p>
+<h3 style="margin-top:18px">Pilotes posés ou arrivés à l'ESS sans atteindre le but</h3>
+<p class="hint">Toujours derrière les pilotes au but : un pilote à l'ESS qui n'atteint pas le but n'a pas accompli la manche et compte comme posé juste avant le but. Distance corrigée = distance + ε × km autonomes, plafonnée à la distance de la manche ; la distance réelle départage les égalités.</p>
 <div class="scroll"><table id="land"><thead><tr><th class="n">Place</th><th>Pilote</th><th class="n">Distance</th><th class="n">Bonus</th><th class="n">Distance corrigée</th><th class="n">Temps estimé</th></tr></thead><tbody></tbody></table></div>
 <div class="row"><button id="copyCsv" disabled>Copier le classement (CSV)</button><a id="dlCsv" href="#" download="wakefield-classement.csv" hidden>Télécharger le CSV</a></div>
 <p class="hint" style="margin-top:24px">Wakefield, licence MIT. Distances calculées en projection plane (environ 0,2 à 0,5 % de moins que les distances officielles sur l'ellipsoïde).</p>
@@ -321,7 +321,7 @@ const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const regCol = g => g < 0.35 ? "#35c46f" : g < 0.7 ? "#f2a33a" : "#9aa5ae";
 const clock = s => { s = Math.round(s + (+$("utcOff").value || 0) * 3600); s = ((s % 86400) + 86400) % 86400; return String(Math.floor(s / 3600)).padStart(2, "0") + ":" + String(Math.floor(s % 3600 / 60)).padStart(2, "0"); };
 const short = n => { const p = n.trim().split(/\s+/); return p.length > 1 ? p[0][0] + ". " + p.slice(1).join(" ") : n; };
-const landed = (p, k) => p.s[k] === 3 && !p.ess;
+const landed = (p, k) => p.s[k] === 3 && !p.goal;
 const ord = k => [...Dt.pilots].sort((a, b) => { const la = landed(a, k), lb = landed(b, k); return la !== lb ? la - lb : la ? (a.fin - b.fin) || (b.dReal - a.dReal) : a.p[k] - b.p[k]; });
 function pos(p, ff) { const a = Math.floor(ff), b = Math.min(NF - 1, a + 1), u = ff - a; return [(p.x[a] + (p.x[b] - p.x[a]) * u) / 100, (p.y[a] + (p.y[b] - p.y[a]) * u) / 100, (p.z[a] + (p.z[b] - p.z[a]) * u) * 10]; }
 function resize() { dpr = devicePixelRatio || 1; Wd = fig.clientWidth; Hd = fig.clientHeight; cv.width = Wd * dpr; cv.height = Hd * dpr; heat.width = Math.max(20, Math.round(Wd / 9)); heat.height = Math.max(15, Math.round(Hd / 9)); hImg = hctx.createImageData(heat.width, heat.height); lastHeatF = -1; }
@@ -380,7 +380,7 @@ function renderSel() {
  if (!sel) { $("sel").textContent = "Touchez un pilote sur la carte ou dans le classement pour le suivre."; return; }
  const k = Math.round(f), p = sel, st = p.s[k];
  $("sel").innerHTML = `<b>${esc(p.n)}</b> · ${st === 1 ? Math.round(p.z[k] * 10) + " m · aide g = " + num(p.g[k] / 100, 2) + " · chrono à " + p.r[k] + " % du temps réel" : st === 2 ? "à l'ESS" : "posé"} · ${landed(p, k) ? "temps estimé " + fmt(p.fin) : "temps projeté " + fmt(p.p[k])}` +
-  (p.ess != null ? ` · final : réel ${fmt(p.ess)}, corrigé ${fmt(p.fin)}, crédit ${num((p.ess - p.fin) / 60)} min` : ` · posé à ${num(p.rem)} km de l'ESS, distance corrigée ${num(p.dCorr)} km`);
+  (p.ess != null ? ` · final : réel ${fmt(p.ess)}, corrigé ${fmt(p.fin)}, crédit ${num((p.ess - p.fin) / 60)} min` : p.essNoGoal != null ? ` · ESS à ${fmt(p.essNoGoal)} mais but non atteint : classé avec les posés, temps estimé ${fmt(p.fin)}` : ` · posé à ${num(p.rem)} km de l'ESS, distance corrigée ${num(p.dCorr)} km`);
 }
 let last = performance.now();
 function loop(now) {
@@ -416,18 +416,18 @@ function show(m) {
  if (keepF === null) { f = Math.min(NF - 1, Math.round(15 * 60 / Dt.step)); const [tx, ty, ts] = camTarget(); cx = tx; cy = ty; span = ts; playing = !reduce; setPlay(); }
  else f = Math.round(keepF * (NF - 1));
  scrub.value = Math.round(f); $("empty").hidden = true; lastHeatF = -1; lastBoardF = -1;
- const R = m.ranking, ess = R.filter(r => r.ess != null), land = R.filter(r => r.ess == null);
- $("kpi").innerHTML = `<div><b>${num(m.D, 2)} km</b>du start à l'ESS</div><div><b>${num(m.vref)} km/h</b>v_ref</div><div><b>${num(m.maxCredit / 60)} min</b>crédit maximal</div><div><b>${ess.length} / ${R.length}</b>pilotes à l'ESS</div><div><b>${fmt(m.base)}</b>base de temps des posés</div>`;
+ const R = m.ranking, ess = R.filter(r => r.ess != null && r.goal), land = R.filter(r => !(r.ess != null && r.goal));
+ $("kpi").innerHTML = `<div><b>${num(m.D, 2)} km</b>du start à l'ESS</div><div><b>${num(m.vref)} km/h</b>v_ref</div><div><b>${num(m.maxCredit / 60)} min</b>crédit maximal</div><div><b>${ess.length} / ${R.length}</b>pilotes au but</div><div><b>${fmt(m.base)}</b>base de temps des posés</div>`;
  document.querySelector("#fin tbody").innerHTML = ess.map(r => { const d = r.realRank - r.rank;
   return `<tr><td class="n">${r.rank}</td><td class="n">${r.realRank}</td><td class="${d > 0 ? "up" : d < 0 ? "dn" : ""}">${d > 0 ? "▲" + d : d < 0 ? "▼" + (-d) : ""}</td><td>${esc(r.name)}</td><td class="n">${fmt(r.ess)}</td><td class="n">${fmt(r.final)}</td><td class="n">${num(r.credit / 60)} min</td><td class="n">${num(r.auto)}</td><td class="n">${Math.round(r.top10)}</td></tr>`; }).join("");
- document.querySelector("#land tbody").innerHTML = land.map(r => `<tr><td class="n">${r.rank}</td><td>${esc(r.name)}</td><td class="n">${num(r.dReal)} km</td><td class="n">+${num(r.dCorr - r.dReal)} km</td><td class="n">${num(r.dCorr)} km</td><td class="n">${fmt(r.final)}</td></tr>`).join("");
+ document.querySelector("#land tbody").innerHTML = land.map(r => `<tr><td class="n">${r.rank}</td><td>${esc(r.name)}${r.ess != null ? ' <span class="hint">(ESS sans but)</span>' : ""}</td><td class="n">${num(r.dReal)} km</td><td class="n">+${num(r.dCorr - r.dReal)} km</td><td class="n">${num(r.dCorr)} km</td><td class="n">${fmt(r.final)}</td></tr>`).join("");
  const c = m.compare;
  $("cmp").innerHTML = c && c.n >= 5 ? `<div class="card" style="margin-bottom:14px"><h3>Comparaison avec le classement officiel (${c.n} pilotes à l'ESS)</h3><table><tbody>
   <tr><td>Corrélation de rang, classement officiel / Wakefield</td><td class="n">${num(c.officialVsWakefield, 2)}</td></tr>
   <tr><td>Corrélation de rang, classement officiel / ordre d'arrivée</td><td class="n">${num(c.officialVsArrival, 2)}</td></tr>
   ${c.top10VsLead != null ? `<tr><td>Temps dans le top 10 de la course / leading officiel</td><td class="n">${num(c.top10VsLead, 2)}</td></tr><tr><td>Temps dans le top 10 de la course / crédit Wakefield</td><td class="n">${num(c.top10VsCredit, 2)}</td></tr>` : ""}
   </tbody></table></div>` : official ? `<p class="hint">Trop peu de pilotes du classement officiel retrouvés dans les traces pour comparer.</p>` : "";
- csv = "place;pilote;statut;temps_reel;temps_corrige;credit_min;km_autonomes;distance_km;distance_corrigee_km\n" + R.map(r => [r.rank, '"' + r.name.replace(/"/g, '""') + '"', r.ess != null ? "ESS" : "pose", r.ess != null ? fmt(r.ess) : "", fmt(r.final), r.credit != null ? num(r.credit / 60) : "", num(r.auto), r.ess != null ? num(m.D) : num(r.dReal), r.ess != null ? "" : num(r.dCorr)].join(";")).join("\n");
+ csv = "place;pilote;statut;temps_reel;temps_corrige;credit_min;km_autonomes;distance_km;distance_corrigee_km\n" + R.map(r => [r.rank, '"' + r.name.replace(/"/g, '""') + '"', r.ess != null && r.goal ? "but" : r.ess != null ? "ESS sans but" : "pose", r.ess != null ? fmt(r.ess) : "", fmt(r.final), r.credit != null ? num(r.credit / 60) : "", num(r.auto), r.ess != null ? num(m.D) : num(r.dReal), r.ess != null ? "" : num(r.dCorr)].join(";")).join("\n");
  $("copyCsv").disabled = false; const a = $("dlCsv"); if (a.href.startsWith("blob:")) URL.revokeObjectURL(a.href); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.hidden = false;
 }
 $("copyCsv").onclick = async () => { try { await navigator.clipboard.writeText(csv); status("Classement copié."); } catch { status("Copie refusée par le navigateur : utilisez le lien de téléchargement.", true); } };
