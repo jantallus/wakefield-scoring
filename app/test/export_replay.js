@@ -14,6 +14,7 @@ const [dir, id, outFile] = process.argv.slice(2);
   const st = W.prepare(task, tracks.filter(Boolean));
   const off = W.parseOfficialCsv(fs.readFileSync(path.join(dir, "official", id + ".csv"), "utf8"));
   W.applyOfficialGoal(st, off);
+  const airFile = path.join(dir, "airspace.txt"); if (fs.existsSync(airFile)) W.checkAirspace(st, W.parseOpenAir(fs.readFileSync(airFile, "latin1")), {});
   const opt = Object.assign({}, W.DEFAULTS), GV = W.computeField(st, opt), clk = W.computeClock(st, GV, opt);
   const replay = W.buildReplay(st, GV, clk);
   const ranking = clk.ranking.map(r => ({ i: r.i, name: r.name, rank: r.rank, realRank: r.realRank || null, ess: r.ess, goal: r.goal, final: r.final, credit: r.credit, auto: r.auto, fol: r.fol, dReal: r.dReal, dCorr: r.dCorr, remLand: r.remLand, top10: st.top10[r.i] / 60 }));
