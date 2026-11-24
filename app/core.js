@@ -455,6 +455,16 @@
       vref = median(best.map(p => (D - p.remLand) / Math.max(0.1, (p.tLand - gate) / 3600)));
     }
     const PROJ = new Float32Array(N * G).fill(NaN), RATE = new Float32Array(N * G).fill(NaN);
+    // live projection only (leaderboard, replay): height is stored time. A pilot's height above the arrival
+    // altitude, capped at what a final glide (opt.glide) to ESS needs, is worth the time to climb it at the
+    // day's mean climb rate. Climbing and gliding then no longer swap places in the live ranking.
+    const { Z } = st, DTg = grid[1] - grid[0];
+    let vzSum = 0, vzN = 0;
+    for (let k = 0; k < N; k++) for (let gi = g0 + 1; gi < G; gi++) { const o = k * G + gi; if (AIR[o] && AIR[o - 1] && CL[o]) { const vz = (Z[o] - Z[o - 1]) / DTg; if (vz > 0) { vzSum += vz; vzN++; } } }
+    const vzDay = vzN ? Math.max(0.5, vzSum / vzN) : 1.5;
+    const arr = pilots.map((p, k) => p.ess ? Z[k * G + Math.min(G - 1, Math.max(0, Math.round((p.ess - grid[0]) / DTg)))] : NaN).filter(Number.isFinite);
+    const zArr = arr.length ? median(arr) : median(pilots.map((p, k) => p.tLand ? Z[k * G + Math.min(G - 1, Math.max(0, Math.round((p.tLand - grid[0]) / DTg)))] : NaN).filter(Number.isFinite));
+    const glide = opt.glide || 8, projVz = opt.projVz || 2; // good climbs run about twice the day's mean climb rate
     const res = pilots.map((p, i) => {
       if (p.start === null) return null;
       let tau = 0, auto = 0, fol = 0;
@@ -472,7 +482,8 @@
         auto += (1 - g) * ds * (b - a) / DT;
         RATE[o] = rate;
         const rem = AIR[o] ? Math.max(0, D - S[o]) : p.remLand;
-        PROJ[o] = tau + rem / vref * 3600;
+        const hE = AIR[o] && opt.projHeight !== false && Number.isFinite(zArr) ? Math.max(0, Math.min(Z[o] - zArr, rem * 1000 / glide)) : 0;
+        PROJ[o] = tau + rem / vref * 3600 - hE / (vzDay * projVz);
       }
       return { i, name: p.name, ess: p.ess ? p.ess - gate : null, goal: p.goal, tau, auto, fol, remLand: p.remLand, tStop };
     });
@@ -504,7 +515,7 @@
     const ranking = (kept.some(r => r.airAdd > 0) ? kept.sort((a, b) => a.final - b.final) : kept).concat(pen);
     ranking.forEach((r, k) => { r.rank = k + 1; });
     essR.slice().sort((a, b) => a.ess - b.ess).forEach((r, k) => { r.realRank = k + 1; });
-    return { vref, D, base, lastEss, ranking, PROJ, RATE, maxCredit: opt.eps * D / vref * 3600 };
+    return { vref, D, base, lastEss, ranking, PROJ, RATE, vzDay, zArr, maxCredit: opt.eps * D / vref * 3600 };
   }
 
   /* Replay frames every STEP seconds. Positions in 10 m, altitude in 10 m, g and rate in %. */
