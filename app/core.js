@@ -15,6 +15,8 @@
     thR: 0.4,          // radius of a thermal: climbers closer than this to a marker keep it alive, km
     thMax: 3600,       // longest life of a thermal marker, s
     thFade: 180,       // after the cycle ends, the marker fades out over this time constant, s
+    catchUp: 1,        // catching up: the share of your pace above the pace of the pilots helping you counts as your own; 0 = off
+    paceWin: 600,      // window over which a pilot's pace (progress along the course) is measured, s
     keep: 720,         // how far back the trail is read, s
     trailW: 1,         // strength of the wake (trail points vs current positions)
     k: 2,              // angle exponent below the horizon (above: k / 2)
@@ -24,7 +26,7 @@
     disc: 0,           // thermal discovery bonus (experimental): share of the time spent climbing where nobody marked
     landedBase: "deadline" // or "lastEss"
   };
-  const FIELD_KEYS = ["tol", "sigA", "sigL0", "sigLk", "sigB", "phi0", "Tm", "thGap", "thR", "thFade", "trailW", "k", "climbW", "sinkW"];
+  const FIELD_KEYS = ["tol", "sigA", "sigL0", "sigLk", "sigB", "phi0", "Tm", "thGap", "thR", "thFade", "catchUp", "paceWin", "trailW", "k", "climbW", "sinkW"];
   const DT = 10, TR = 20, STEP = 20;
 
   /* ---------- task ---------- */
@@ -285,6 +287,9 @@
     opt = Object.assign({}, DEFAULTS, opt || {});
     const { G, N, g0, X, Y, Z, S, AIR, CL, grid } = st;
     const DEATH = thermalDeaths(st, opt);
+    // pace: progress along the course over the last paceWin seconds, km/h (NaN when unknown)
+    const PACE = new Float32Array(N * G).fill(NaN), pw = Math.round(opt.paceWin / DT);
+    for (let i = 0; i < N; i++) for (let g = pw; g < G; g++) { const o = i * G + g, p = o - pw; if (AIR[o] && AIR[p]) PACE[o] = (S[o] - S[p]) / opt.paceWin * 3600; }
     const lag = Math.round(TR / DT), keepTh = Math.max(opt.keep, opt.thMax), nlag = Math.round(keepTh / TR), nKeep = Math.round(opt.keep / TR);
     const GV = new Float32Array(N * G);
     const sA2 = opt.sigA * opt.sigA, sB2 = opt.sigB * opt.sigB, rA = 3 * opt.sigA, rB2 = 9 * sB2;
@@ -318,8 +323,9 @@
       }
       for (let i = 0; i < N; i++) {
         const oo = i * G + gi; if (!AIR[oo]) continue;
-        const ox = X[oo], oy = Y[oo], oz = Z[oo], os = S[oo];
-        let phi = 0;
+        const ox = X[oo], oy = Y[oo], oz = Z[oo], os = S[oo], vo = PACE[oo];
+        const cu = opt.catchUp > 0 && vo > 5;
+        let phi = 0, hv = 0, hw = 0;
         for (let q = 0; q < m; q++) {
           if (so[q] === i) continue;
           const dx = ss[q] - os, dxg = sx[q] - ox, dyg = sy[q] - oy, dh2 = dxg * dxg + dyg * dyg;
@@ -331,15 +337,23 @@
             const dz = (sz[q] - oz) / 1000;
             K = Math.exp(-(dx * dx) / sA2 - lat2 / (sl * sl) - dz * dz);
             const r2 = dh2 + dz * dz;
-            phi += K * (r2 > 1e-6 ? Math.pow(dh2 / r2, dz > 0 ? ka : kb) : 1) * sw[q];
+            const h = K * (r2 > 1e-6 ? Math.pow(dh2 / r2, dz > 0 ? ka : kb) : 1) * sw[q];
+            phi += h;
+            if (cu) { const vs = PACE[so[q] * G + gi]; if (!Number.isNaN(vs)) { hv += h * vs; hw += h; } }
           } else {
             if (dh2 > rB2) continue;
             const dz = (sz[q] - oz) / 1000, r2 = dh2 + dz * dz;
             K = Math.exp(-r2 / sB2);
-            phi += K * (r2 > 1e-6 ? Math.pow(dh2 / r2, dz > 0 ? ka : kb) : 1) * sw[q];
+            const h = K * (r2 > 1e-6 ? Math.pow(dh2 / r2, dz > 0 ? ka : kb) : 1) * sw[q];
+            phi += h;
+            if (cu) { const vs = PACE[so[q] * G + gi]; if (!Number.isNaN(vs)) { hv += h * vs; hw += h; } }
           }
         }
-        GV[oo] = 1 - Math.exp(-phi / opt.phi0);
+        let g = 1 - Math.exp(-phi / opt.phi0);
+        // catching up: progress beyond the pace of the pilots who help you is your own.
+        // e = share of your pace above theirs; the help left is g x (1 - catchUp x e).
+        if (cu && hw > 0) { const e = Math.max(0, (vo - hv / hw) / vo); g *= Math.max(0, 1 - opt.catchUp * e); }
+        GV[oo] = g;
       }
       if (progress && (gi - g0) % 25 === 0) progress((gi - g0) / (G - g0));
     }

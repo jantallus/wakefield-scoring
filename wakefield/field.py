@@ -49,6 +49,12 @@ for h in range(G):
     keep = ~dead; ai, ag, ax, ay, last = ai[keep], ag[keep], ax[keep], ay[keep], last[keep]
 DEATH[ai, ag] = np.inf
 
+# Pace: progress along the course over the last PACE_WIN seconds, km/h (catching-up rule)
+CATCHUP, PACE_WIN = 1.0, 600.0
+pw = int(PACE_WIN / DT)
+PACE = np.full((N, G), np.nan)
+PACE[:, pw:] = np.where(AIR[:, pw:] & AIR[:, :-pw], (S[:, pw:].astype(np.float64) - S[:, :-pw]) / PACE_WIN * 3600, np.nan)
+
 g0 = int(BACK / DT)                     # index of GATE in grid
 lag = int(TR / DT); nlag = int(KEEPTH / TR); nkeep = int(KEEP / TR)
 jj = np.arange(nlag + 1); jj = jj[(jj <= nkeep) | (jj % 3 == 0)]   # old markers: one trail step in three
@@ -86,7 +92,17 @@ for gi in range(g0, G):
     A = np.where(r2 > 1e-6, np.where(dz > 0, np.sqrt(dh2 / np.maximum(r2, 1e-9)), dh2 / np.maximum(r2, 1e-9)), 1.0)
     phi = (K * A * w[None])
     phi[own[None, :] == obs[:, None]] = 0
-    GV[obs, gi] = 1 - np.exp(-phi.sum(1) / PHI0)
+    g = 1 - np.exp(-phi.sum(1) / PHI0)
+    # catching up: progress beyond the pace of the pilots who help you is your own
+    if CATCHUP > 0:
+        vo = PACE[obs, gi]; vs = PACE[own, gi]
+        ok_v = ~np.isnan(vs)
+        hw = (phi * ok_v[None]).sum(1); hv = (phi * np.where(ok_v, vs, 0.0)[None]).sum(1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            e = np.maximum(0.0, (vo - hv / hw) / vo)
+        use = (vo > 5) & (hw > 0)
+        g = np.where(use, g * np.maximum(0.0, 1 - CATCHUP * np.nan_to_num(e)), g)
+    GV[obs, gi] = g
 
 # clocks
 res = []

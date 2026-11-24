@@ -53,6 +53,7 @@ dτ/dt = 1 − ε · (1 − g) · max(0, v_prog) / v_ref
 | T_m | Memory of the wake | 4 min |
 | Thermal cycle | A point where a pilot was climbing keeps marking the thermal, at full weight, for as long as the thermal is occupied: it stays alive while someone climbs within 0.4 km of it, and its cycle ends once nobody has for 60 s (at most 1 h). It then fades out with a short tail (time constant 3 min), since pilots arriving just after still know roughly where the gaggle climbed | 60 s, 0.4 km, 3 min |
 | Φ₀ | How much help counts as "helped" | 8 |
+| Catching up | If you go faster than the pilots showing you the way, the difference is yours: the share of your pace (progress over the last 10 min) above the pace of the pilots helping you counts as autonomous. A pilot catching up at 30 km/h behind a gaggle moving at 20 km/h gets a third of their progress credited; a follower at the gaggle's pace gets nothing | on |
 | ε | Price of risk: the most time a fully led task can earn (ε × distance / v_ref) | 0.15 |
 | v_ref | Reference speed: median speed of pilots at ESS | per task |
 
