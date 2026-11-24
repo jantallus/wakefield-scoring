@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Replay Gemona manche 3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: instrument de suivi de manche, précis et sobre.
+   IDEA: l'écran du directeur d'épreuve qui rejoue la manche.
+   PICTURE: la carte animée des 123 pilotes, champ magenta, cylindres de la manche.
+   COLOUR and TYPE: terrain ardoise, champ magenta, régimes vert/orange/gris ; Barlow.
+   LAYOUT: constat en titre, carte + leaderboard, puis résultat final et sensibilité. */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#0c1216);--ink:light-dark(#10161c,#e8edf1);--mut:light-dark(#5a6670,#93a0aa);
+--line:light-dark(#e3e7ea,#1f2a31);--card:light-dark(#f5f7f8,#121b21);--acc:#e0408f;--auto:#35c46f;--mid:#f2a33a;--help:#9aa5ae}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:1240px;margin:0 auto;padding:clamp(16px,3vw,36px) max(4vw,14px)}
+h1{font:600 clamp(28px,4.4vw,44px)/1.05 'Barlow Condensed',Barlow,sans-serif;margin:0 0 8px;text-wrap:balance}
+h2{font:600 24px/1.1 'Barlow Condensed',Barlow,sans-serif;margin:28px 0 8px}
+.lead{color:var(--mut);margin:0 0 16px;max-width:72ch}
+.grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:18px;align-items:start}
+@media(max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.fig{position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:#12202a;touch-action:manipulation}
+.fig canvas{position:absolute;inset:0;width:100%;height:100%}
+.hud{position:absolute;left:10px;top:8px;color:#e8eef2;font:600 15px Barlow;text-shadow:0 1px 2px #000a;pointer-events:none}
+.load{position:absolute;inset:0;display:grid;place-items:center;color:#cfd8de;font-weight:600}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
+button{font:600 15px Barlow;min-height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.seg{display:flex}.seg button{border-radius:0}.seg button:first-child{border-radius:8px 0 0 8px}.seg button:last-child{border-radius:0 8px 8px 0}
+.scrub{width:100%;accent-color:var(--acc);height:44px;margin-top:6px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;color:var(--mut);font-size:14px}
+.dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.sel{margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--card);font-size:15px;min-height:44px}
+.board{background:var(--card);border-radius:10px;padding:10px 6px 6px}
+.board h3{font:600 20px 'Barlow Condensed',Barlow;margin:2px 8px 8px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{font-weight:500;color:var(--mut);text-align:left;padding:4px 6px;font-size:13px}
+td{padding:5px 6px;border-top:1px solid var(--line);white-space:nowrap}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+#tb tr{cursor:pointer}tr.me td{background:light-dark(#fde7f2,#2a1622)}
+.nm{overflow:hidden;text-overflow:ellipsis;max-width:11em}
+.bar{display:inline-block;height:8px;border-radius:4px;background:var(--line);width:44px;overflow:hidden;vertical-align:1px;margin-right:4px}.bar i{display:block;height:100%}
+.up{color:var(--auto)}.dn{color:#e0603a}
+.scroll{overflow-x:auto}
+.notes{color:var(--mut);font-size:14px;max-width:80ch}
+.notes li{margin:4px 0}
+</style></head><body>
+<div class="wrap">
+<h1>Gemona 2026, manche 3 : course en gaggle, le leading décide du podium et Justin Puthod passe de 15ᵉ à 1ᵉʳ</h1>
+<p class="lead">Replay des 123 traces IGC de la manche du 28 juillet 2026 (76,62 km du start à l'ESS), avec le chrono corrigé par le champ des autres pilotes (ε = 0,15, Φ₀ = 8). Les 50 premiers arrivent en 1,8 min : le crédit, jusqu'à 14 min, pèse plus que l'écart de vitesse. Puthod a passé 65 min dans le top 5 de la course, Lambert 34 min. 104 des 113 pilotes à l'ESS changent de place (corrélation crédit / temps en tête : 0,61). Touchez un pilote sur la carte ou dans le classement pour le suivre.</p>
+<div class="grid">
+<div>
+ <div class="fig" id="fig"><canvas id="cv"></canvas><div class="hud" id="hud"></div><div class="load" id="load">Chargement des traces…</div></div>
+ <input id="scrub" class="scrub" type="range" min="0" max="1" step="1" value="0" aria-label="Moment de la manche">
+ <div class="ctrl">
+  <button id="play">Lecture</button>
+  <div class="seg" role="group" aria-label="Vitesse"><button data-s="1">1 min/s</button><button data-s="3" class="on">3 min/s</button><button data-s="10">10 min/s</button></div>
+ </div>
+ <div class="ctrl">
+  <div class="seg" role="group" aria-label="Caméra"><button data-c="head" class="on">Tête de course</button><button data-c="sel">Pilote suivi</button><button data-c="all">Ensemble</button></div>
+  <button id="tF" class="on">Champ</button><button id="tR" class="on">Traînées</button>
+ </div>
+ <div class="legend">
+  <span><i class="dot" style="background:var(--auto)"></i>Autonome</span>
+  <span><i class="dot" style="background:var(--mid)"></i>Semi-aidé</span>
+  <span><i class="dot" style="background:var(--help)"></i>Aidé (grappe ou sillage)</span>
+  <span>Taille du point = altitude · cercles = cylindres de la manche</span>
+ </div>
+ <div class="sel" id="sel">Aucun pilote suivi.</div>
+</div>
+<div class="board"><h3>Leaderboard en temps projeté</h3>
+ <table><thead><tr><th class="n">#</th><th></th><th>Pilote</th><th class="n">Temps</th><th>Chrono</th></tr></thead><tbody id="tb"></tbody></table>
+ <div class="ctrl" style="margin:8px"><button id="all">Afficher tous les pilotes</button></div>
+</div>
+</div>
+
+<h2>Résultat final des pilotes à l'ESS</h2>
+<p class="lead">Classement sur le temps corrigé, comparé à l'ordre d'arrivée réel à l'ESS. Le crédit est le temps gagné en volant en autonomie ; le maximum possible était de 17,7 min (ε × distance / v_ref, avec v_ref = 39,0 km/h).</p>
+<div class="scroll"><table id="fin"><thead><tr><th class="n">Place</th><th class="n">Réel</th><th></th><th>Pilote</th><th class="n">Temps réel</th><th class="n">Temps corrigé</th><th class="n">Crédit</th><th class="n">Km autonomes</th></tr></thead><tbody></tbody></table></div>
+<h2>Pilotes posés</h2><p class="lead">Classés derrière tous les pilotes à l'ESS. Distance corrigée = distance depuis le start + ε × km volés en autonomie, plafonnée à la distance de la manche ; à égalité, la plus grande distance réelle passe devant. Temps estimé = durée jusqu'à la deadline (18:00) + distance manquante corrigée / v_ref.</p>
+<div class="scroll"><table id="land"><thead><tr><th class="n">Place</th><th class="n">Rang distance</th><th></th><th>Pilote</th><th class="n">Distance</th><th class="n">Bonus</th><th class="n">Distance corrigée</th><th class="n">Temps estimé</th></tr></thead><tbody></tbody></table></div>
+
+<h2>Sensibilité au seuil de densité Φ₀</h2>
+<p class="lead">Avec 123 pilotes en l'air, le champ sature vite : à Φ₀ = 0,8 (réglage de la simulation fictive), presque tout le monde est « aidé » en permanence et le crédit devient négligeable.</p>
+<div class="scroll"><table><thead><tr><th class="n">Φ₀</th><th class="n">Crédit du vainqueur</th><th class="n">Crédit moyen à l'ESS</th><th class="n">Crédit min – max</th><th class="n">Pilotes qui changent de place</th></tr></thead>
+<tbody><tr><td class="n">0,8</td><td class="n">0,6 min</td><td class="n">0,5 min</td><td class="n">0,0 – 7,1 min</td><td class="n">56 / 113</td></tr>
+<tr><td class="n">3</td><td class="n">3,2 min</td><td class="n">1,7 min</td><td class="n">0,0 – 11,5 min</td><td class="n">99 / 113</td></tr>
+<tr><td class="n">8 (replay)</td><td class="n">7,0 min</td><td class="n">3,9 min</td><td class="n">0,8 – 14,2 min</td><td class="n">104 / 113</td></tr>
+<tr><td class="n">20</td><td class="n">11,1 min</td><td class="n">7,9 min</td><td class="n">4,0 – 16,3 min</td><td class="n">100 / 113</td></tr></tbody></table></div>
+
+<h2>Méthode et limites</h2>
+<ul class="notes">
+<li>Start à 13:25 (porte unique, entrée dans le cylindre de 45 km autour de Barcis), chrono de tous les pilotes lancé à la porte. Arrêt du chrono à l'ESS. Tolérance de 0,5 % du rayon sur les cylindres (catégorie 2).</li>
+<li>Parcours optimisé recalculé : 76,62 km du start à l'ESS contre 76,80 km officiels (calcul plan au lieu de l'ellipsoïde, écart de 0,2 %).</li>
+<li>Champ calculé toutes les 10 s sur les positions des autres pilotes et leurs traces des 12 dernières minutes : cône de sillage de 3 km, angle de vue, poids fort quand le pilote montait. v_ref = 39,0 km/h (vitesse médiane des pilotes à l'ESS).</li>
+<li>Pilotes posés : toujours classés derrière les pilotes à l'ESS. Temps estimé = durée jusqu'à la deadline + (distance de la manche − distance corrigée) / v_ref, la distance corrigée étant plafonnée à la distance de la manche ; à égalité, la plus grande distance réelle départage. En direct, un pilote qui se pose passe aussitôt sous tous les pilotes en vol.</li>
+<li>La couleur des pilotes et le classement viennent du calcul exact. La nappe magenta est une approximation pour l'affichage : le sillage y suit le cap de chaque pilote, vu par un observateur à l'altitude du pilote suivi (ou à l'altitude médiane).</li>
+</ul>
+</div>
+<script>
+{
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),fig=document.getElementById('fig'),hud=document.getElementById('hud');
+const tb=document.getElementById('tb'),selEl=document.getElementById('sel'),scrub=document.getElementById('scrub');
+const K={sigA:3,sigL:0.6,sigLk:0.22,sigB:0.4,Tm:240,keep:720,phi0:8};
+let Dt=null,NF=0,f=0,playing=false,speed=3,cam='head',showF=true,showR=true,sel=null,showAll=false,W=0,H=0,dpr=1;
+let cx=0,cy=0,span=24,lastHeatF=-1,lastHeatT=0,lastBoardF=-1;
+const heat=document.createElement('canvas'),hctx=heat.getContext('2d');let hImg=null;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const regCol=g=>g<0.35?'#35c46f':g<0.7?'#f2a33a':'#9aa5ae';
+const fmt=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/3600)+':'+String(Math.floor(s%3600/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
+const clock=s=>{s=Math.round(s)+7200;return String(Math.floor(s/3600)).padStart(2,'0')+':'+String(Math.floor(s%3600/60)).padStart(2,'0')};
+const clockOff=0;const km=v=>v.toFixed(1).replace('.',',')+' km';const dr=p=>Math.max(0,Dt.D-p.rem),ds=p=>Math.min(Dt.D,dr(p)+Dt.eps*p.auto),tl=p=>57600-Dt.t0+(Dt.D-ds(p))/Dt.vref*3600;const landed=(p,k)=>p.s[k]===3&&!p.ess;
+const ord=k=>[...Dt.pilots].sort((a,b)=>{const la=landed(a,k),lb=landed(b,k);return la!==lb?la-lb:la?(ds(b)-ds(a))||(dr(b)-dr(a)):a.p[k]-b.p[k]});
+const short=n=>{const p=n.trim().split(/\s+/);return p.length>1?p[0][0]+'. '+p.slice(1).join(' '):n};
+function pos(p,ff){const a=Math.floor(ff),b=Math.min(NF-1,a+1),u=ff-a;
+ return[(p.x[a]+(p.x[b]-p.x[a])*u)/100,(p.y[a]+(p.y[b]-p.y[a])*u)/100,(p.z[a]+(p.z[b]-p.z[a])*u)*10]}
+function resize(){dpr=devicePixelRatio||1;W=fig.clientWidth;H=fig.clientHeight;cv.width=W*dpr;cv.height=H*dpr;
+ heat.width=Math.max(20,Math.round(W/9));heat.height=Math.max(15,Math.round(H/9));hImg=hctx.createImageData(heat.width,heat.height);lastHeatF=-1}
+const ro=new ResizeObserver(resize);ro.observe(fig);
+const sc=()=>W/span, wx=x=>(x-cx)*sc()+W/2, wy=y=>H/2-(y-cy)*sc();
+function camTarget(){const k=Math.round(f);
+ if(cam==='all'||!Dt)return[-15,0,Math.max(95,95*H/W*4/3)];
+ if(cam==='sel'&&sel){const[x,y]=pos(sel,f);return[x,y,22]}
+ const fly=Dt.pilots.filter(p=>p.s[k]===1).sort((a,b)=>a.p[k]-b.p[k]).slice(0,8);
+ const src=fly.length?fly:Dt.pilots.filter(p=>p.s[k]===2);
+ if(!src.length)return[cx,cy,24];let x=0,y=0;src.forEach(p=>{const q=pos(p,f);x+=q[0];y+=q[1]});return[x/src.length,y/src.length,24]}
+function updHeat(){if(!Dt||!hImg)return;const k=Math.round(f),gw=heat.width,gh=heat.height,d=hImg.data,s=sc();
+ const fly=Dt.pilots.filter(p=>p.s[k]===1);
+ const oz=sel&&sel.s[k]===1?sel.z[k]*10:(fly.length?fly.map(p=>p.z[k]).sort((a,b)=>a-b)[fly.length>>1]*10:1500);
+ const x0=cx-W/2/s-4,x1=cx+W/2/s+4,y0=cy-H/2/s-4,y1=cy+H/2/s+4,src=[],nt=Dt.step/K.Tm,lag=Math.round(K.keep/Dt.step);
+ for(const p of Dt.pilots){if(p===sel)continue;
+  for(let j=0;j<=lag;j++){const i=k-j;if(i<1)break;if(p.s[i]!==1)continue;
+   const x=p.x[i]/100,y=p.y[i]/100;if(x<x0||x>x1||y<y0||y>y1)continue;
+   let hx=x-p.x[i-1]/100,hy=y-p.y[i-1]/100;const hl=Math.hypot(hx,hy);if(hl<1e-3){hx=0;hy=0}else{hx/=hl;hy/=hl}
+   const age=j*Dt.step,c=(p.z[i]-p.z[i-1])*10/Dt.step>0.3;
+   src.push(x,y,p.z[i]*10,hx,hy,(j?nt:1)*Math.exp(-age/K.Tm)*(c?1:0.35))}}
+ for(let r=0;r<gh;r++)for(let q=0;q<gw;q++){const X=cx+((q+0.5)/gw*W-W/2)/s,Y=cy-((r+0.5)/gh*H-H/2)/s;let phi=0;
+  for(let m=0;m<src.length;m+=6){const dx=src[m]-X,dy=src[m+1]-Y;if(dx>6||dx<-6||dy>6||dy<-6)continue;
+   const dz=(src[m+2]-oz)/1000,dh2=dx*dx+dy*dy,r2=dh2+dz*dz,al=dx*src[m+3]+dy*src[m+4];let Kk;
+   if(al>0&&(src[m+3]||src[m+4])){const a=al,sl=K.sigL+K.sigLk*a,lat2=Math.max(0,dh2-a*a);Kk=Math.exp(-(a*a)/(K.sigA*K.sigA)-lat2/(sl*sl)-dz*dz)}
+   else Kk=Math.exp(-r2/(K.sigB*K.sigB));
+   if(Kk<1e-4)continue;const A=r2>1e-6?(dz>0?Math.sqrt(dh2/r2):dh2/r2):1;phi+=Kk*A*src[m+5]}
+  const g=1-Math.exp(-phi/K.phi0),o=(r*gw+q)*4;d[o]=224;d[o+1]=64;d[o+2]=143;d[o+3]=Math.round(Math.pow(g,0.8)*175)}
+ hctx.putImageData(hImg,0,0)}
+function draw(){const s=sc(),k=Math.round(f);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#12202a';ctx.fillRect(0,0,W,H);
+ if(showF&&cam!=='all'){ctx.imageSmoothingEnabled=true;ctx.drawImage(heat,0,0,W,H)}
+ ctx.lineWidth=1.2;Dt.task.cyl.forEach((c,i)=>{ctx.strokeStyle=i===0||i===Dt.task.cyl.length-1?'#ffffff90':'#ffffff55';ctx.setLineDash(i===0?[5,5]:[]);
+  ctx.beginPath();ctx.arc(wx(c.x),wy(c.y),c.r*s,0,7);ctx.stroke()});ctx.setLineDash([]);
+ ctx.strokeStyle='#ffffff40';ctx.setLineDash([3,6]);ctx.beginPath();Dt.task.route.forEach((p,i)=>i?ctx.lineTo(wx(p[0]),wy(p[1])):ctx.moveTo(wx(p[0]),wy(p[1])));ctx.stroke();ctx.setLineDash([]);
+ ctx.fillStyle='#ffffffb8';ctx.font='600 12px Barlow';Dt.task.cyl.forEach((c,i)=>{const X=wx(c.x),Y=wy(c.y);if(X>-40&&X<W+40&&Y>-20&&Y<H+20)ctx.fillText(i===0?'Start':i===Dt.task.cyl.length-1?'ESS':c.n,X+4,Y-4)});
+ if(showR&&cam!=='all'){const lag=Math.round(K.keep/Dt.step);for(const p of Dt.pilots){if(p.s[k]!==1&&p!==sel)continue;ctx.strokeStyle=p===sel?'#ffffffd0':'#ffffff26';ctx.lineWidth=p===sel?2:1;ctx.beginPath();
+  for(let j=Math.max(0,k-lag);j<=k;j++){const X=wx(p.x[j]/100),Y=wy(p.y[j]/100);j===Math.max(0,k-lag)?ctx.moveTo(X,Y):ctx.lineTo(X,Y)}ctx.stroke()}}
+ for(const p of Dt.pilots){const[x,y,z]=pos(p,f),X=wx(x),Y=wy(y);if(X<-20||X>W+20||Y<-20||Y>H+20)continue;const st=p.s[k];
+  const r=cam==='all'?2.5:st===1?2.5+z/650:2.5;ctx.globalAlpha=st===1?1:st===2?0.8:0.35;ctx.fillStyle=st===2?'#ffffff':regCol(p.g[k]/100);
+  ctx.beginPath();ctx.arc(X,Y,r,0,7);ctx.fill();ctx.globalAlpha=1;
+  if(p===sel){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(X,Y,r+5,0,7);ctx.stroke();ctx.fillStyle='#fff';ctx.font='600 13px Barlow';ctx.fillText(short(p.n),X+r+7,Y-r-3)}}
+ const fly=Dt.pilots.filter(p=>p.s[k]===1).length,ess=Dt.pilots.filter(p=>p.s[k]===2).length;
+ hud.textContent=clock(Dt.t0+f*Dt.step)+' · en vol '+fly+' · ESS '+ess}
+function rankAt(k){return[...Dt.pilots].sort((a,b)=>(a.s[k]===2)-(b.s[k]===2)?0:a.p[k]-b.p[k])}
+function renderBoard(){const k=Math.round(f),R=ord(k),k2=Math.max(0,k-6),prev=new Map(ord(k2).map((p,i)=>[p,i]));
+ let rows=R.map((p,i)=>({p,i}));if(!showAll){const top=rows.slice(0,15);if(sel&&!top.some(r=>r.p===sel))top.push(rows.find(r=>r.p===sel));rows=top}
+ tb.innerHTML=rows.map(({p,i})=>{const d=prev.get(p)-i,st=p.s[k],pc=p.r[k];
+  return `<tr data-i="${Dt.pilots.indexOf(p)}" class="${p===sel?'me':''}"><td class="n">${i+1}</td><td class="${d>0?'up':d<0?'dn':''}">${d>0?'▲':d<0?'▼':''}</td>
+  <td class="nm"><i class="dot" style="background:${st===2?'#fff;border:1px solid var(--line)':regCol(p.g[k]/100)}"></i>${short(p.n)}</td><td class="n">${fmt(landed(p,k)?tl(p):p.p[k])}</td>
+  <td>${st===1?`<span class="bar"><i style="width:${pc}%;background:${regCol(p.g[k]/100)}"></i></span>${pc} %`:st===2?'ESS':'posé'}</td></tr>`}).join('')}
+function renderSel(){if(!sel){selEl.textContent='Aucun pilote suivi : touchez un point ou une ligne du classement.';return}
+ const k=Math.round(f),p=sel,st=p.s[k];
+ selEl.innerHTML=`<b>${p.n}</b> · ${st===1?Math.round(p.z[k]*10)+' m · aide g = '+(p.g[k]/100).toFixed(2).replace('.',',')+' · chrono à '+p.r[k]+' % du temps réel':st===2?'à l\'ESS':'posé'} · ${landed(p,k)?'temps estimé '+fmt(tl(p)):'temps projeté '+fmt(p.p[k])}`+
+  (p.ess?` · final : réel ${fmt(p.ess)}, corrigé ${fmt(p.fin)}, crédit ${((p.ess-p.fin)/60).toFixed(1).replace('.',',')} min`:` · posé à ${km(p.rem)} de l'ESS · distance corrigée ${km(ds(p))} (bonus ${km(Dt.eps*p.auto)}) · temps estimé ${fmt(tl(p))}`)}
+function renderFinal(){const e=Dt.pilots.filter(p=>p.ess),real=new Map([...e].sort((a,b)=>a.ess-b.ess).map((p,i)=>[p,i+1]));
+ document.querySelector('#fin tbody').innerHTML=[...e].sort((a,b)=>a.fin-b.fin).map((p,i)=>{const r=real.get(p),d=r-(i+1);
+  return `<tr><td class="n">${i+1}</td><td class="n">${r}</td><td class="${d>0?'up':d<0?'dn':''}">${d>0?'▲'+d:d<0?'▼'+(-d):''}</td><td>${p.n}</td><td class="n">${fmt(p.ess)}</td><td class="n">${fmt(p.fin)}</td><td class="n">${((p.ess-p.fin)/60).toFixed(1).replace('.',',')} min</td><td class="n">${String(p.auto).replace('.',',')}</td></tr>`}).join('');
+ const L=Dt.pilots.filter(p=>!p.ess),byd=new Map([...L].sort((a,b)=>dr(b)-dr(a)).map((p,i)=>[p,i+1]));
+ document.querySelector('#land tbody').innerHTML=[...L].sort((a,b)=>(ds(b)-ds(a))||(dr(b)-dr(a))).map((p,i)=>{const r=byd.get(p),d=r-(i+1);
+  return `<tr><td class="n">${e.length+i+1}</td><td class="n">${r}</td><td class="${d>0?'up':d<0?'dn':''}">${d>0?'▲'+d:d<0?'▼'+(-d):''}</td><td>${p.n}</td><td class="n">${km(dr(p))}</td><td class="n">+${km(Dt.eps*p.auto)}</td><td class="n">${km(ds(p))}</td><td class="n">${fmt(tl(p))}</td></tr>`}).join('');}
+let last=performance.now();
+function loop(now){const dt=Math.min(0.1,(now-last)/1000);last=now;
+ if(Dt){if(playing){f+=dt*speed*60/Dt.step;if(f>=NF-1){f=NF-1;playing=false;setPlay()}scrub.value=Math.round(f)}
+  const[tx,ty,ts]=camTarget(),a=reduce?1:0.08;cx+=(tx-cx)*a;cy+=(ty-cy)*a;span+=(ts-span)*a;
+  if(showF&&cam!=='all'&&(Math.round(f)!==lastHeatF||now-lastHeatT>900)&&now-lastHeatT>250){updHeat();lastHeatF=Math.round(f);lastHeatT=now}
+  if(Math.round(f)!==lastBoardF){renderBoard();renderSel();lastBoardF=Math.round(f)}
+  draw()}
+ requestAnimationFrame(loop)}
+const setPlay=()=>{const b=document.getElementById('play');b.textContent=playing?'Pause':'Lecture';b.classList.toggle('on',playing)};
+document.getElementById('play').onclick=()=>{if(f>=NF-1)f=0;playing=!playing;setPlay()};
+document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{speed=+b.dataset.s;document.querySelectorAll('[data-s]').forEach(x=>x.classList.toggle('on',x===b))});
+document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{cam=b.dataset.c;document.querySelectorAll('[data-c]').forEach(x=>x.classList.toggle('on',x===b));lastHeatF=-1});
+const tog=(id,fn)=>{const b=document.getElementById(id);b.onclick=()=>{b.classList.toggle('on',fn());lastHeatF=-1}};
+tog('tF',()=>showF=!showF);tog('tR',()=>showR=!showR);
+document.getElementById('all').onclick=e=>{showAll=!showAll;e.target.textContent=showAll?'Afficher les 15 premiers':'Afficher tous les pilotes';lastBoardF=-1};
+scrub.oninput=()=>{f=+scrub.value;lastHeatF=-1};
+const pick=p=>{sel=sel===p?null:p;if(sel&&cam==='head'){}lastHeatF=-1;lastBoardF=-1};
+cv.addEventListener('pointerdown',e=>{if(!Dt)return;const r=cv.getBoundingClientRect(),X=e.clientX-r.left,Y=e.clientY-r.top;let best=null,bd=22;
+ for(const p of Dt.pilots){const[x,y]=pos(p,f),d=Math.hypot(wx(x)-X,wy(y)-Y);if(d<bd){bd=d;best=p}}sel=best;lastHeatF=-1;lastBoardF=-1});
+tb.addEventListener('click',e=>{const tr=e.target.closest('tr');if(tr)pick(Dt.pilots[+tr.dataset.i])});
+fetch('replay.json').then(r=>r.json()).then(j=>{Dt=j;NF=j.pilots[0].x.length;scrub.max=NF-1;f=Math.round(15*60/j.step);scrub.value=f;
+ document.getElementById('load').remove();K.phi0=j.phi0;const[tx,ty,ts]=camTarget();cx=tx;cy=ty;span=ts;renderFinal();playing=!reduce;setPlay()})
+ .catch(()=>{document.getElementById('load').textContent='Impossible de charger les traces.'});
+requestAnimationFrame(loop);
+}
+</script></body></html>
