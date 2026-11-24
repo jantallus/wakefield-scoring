@@ -30,8 +30,8 @@ Wakefield remplace les points de leading et les points de temps par un seul chro
 | Temps passé parmi les 10 premiers de la course | 77 min | 2 min |
 | Part du vol sans aide | 46 % | 0 % |
 | Thermiques enroulés sans personne pour les marquer | 43 % | 0 % |
-| Crédit de temps | 10,2 min | 2,2 min |
-| Classement Wakefield | **1ᵉʳ** | 37ᵉ |
+| Crédit de temps | 9,8 min | −0,2 min (sa pénalité de suiveur dépasse son crédit) |
+| Classement Wakefield | **1ᵉʳ** | 36ᵉ |
 
 Le crédit est borné (ici 17,7 min au plus) : un pilote autonome mais trop lent ne peut pas passer devant un pilote rapide. Wakefield ne récompense pas l'isolement, il récompense l'initiative qui fait avancer.
 
@@ -48,7 +48,7 @@ Les formules et les paramètres sont détaillés dans le [README en anglais](REA
 
 ## Premiers résultats : PWC Gemona 2026, manches 2 et 3
 
-Le classement final reste très proche du classement officiel (même vainqueur, corrélation de rang de 0,96 à 0,97), mais le crédit Wakefield suit beaucoup mieux que le leading GAP le temps passé en tête de course : 0,86 contre 0,65 en manche 2, et 0,80 contre 0,41 en manche 3, une course en gaggle.
+Le classement final reste très proche du classement officiel (même vainqueur, corrélation de rang de 0,96 à 0,97), mais le crédit Wakefield suit beaucoup mieux que le leading GAP le temps passé en tête de course : 0,84 contre 0,65 en manche 2, et 0,80 contre 0,40 en manche 3, une course en gaggle.
 
 Les replays animés sont dans [`replays/`](replays/).
 

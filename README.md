@@ -30,8 +30,8 @@ Being low and in front is rewarded (courage), being high and in front too (therm
 | Time among the race's first 10 | 77 min | 2 min |
 | Share of the flight without help | 46 % | 0 % |
 | Thermals climbed with nobody marking them | 43 % | 0 % |
-| Time credit | 10.2 min | 2.2 min |
-| Wakefield rank | **1st** | 37th |
+| Time credit | 9.8 min | −0.2 min (his follower penalty outweighs his credit) |
+| Wakefield rank | **1st** | 36th |
 
 The credit is bounded (here at most 17.7 min): an autonomous but slow pilot cannot overtake a fast one. Wakefield does not reward being alone, it rewards initiative that makes progress.
 
@@ -75,8 +75,8 @@ Compared with the official PWCA results (GAP scoring):
 | Pilots at ESS compared | 49 | 104 |
 | Winner, official / Wakefield | Lambert / Lambert | Puthod / Puthod |
 | Rank correlation, official vs Wakefield | 0.97 | 0.96 |
-| Time in the race's top 10 vs GAP leading points | 0.65 | 0.41 |
-| Time in the race's top 10 vs Wakefield credit | 0.86 | 0.80 |
+| Time in the race's top 10 vs GAP leading points | 0.65 | 0.40 |
+| Time in the race's top 10 vs Wakefield credit | 0.84 | 0.80 |
 
 The final rankings stay very close to the official ones, but the Wakefield credit follows the time really spent at the front much better than GAP leading points, especially in a gaggle race. "Time in the top 10" is an imperfect judge, close to the model's logic, so the advantage is probably somewhat flattering.
 
