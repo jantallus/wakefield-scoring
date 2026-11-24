@@ -16,6 +16,25 @@ Wakefield replaces leading points and time points with a single clock:
 
 Being low and in front is rewarded (courage), being high and in front too (thermal efficiency): what counts is not using the others.
 
+## Two portraits
+
+**The one who wins: the opener.** They pick their own line instead of waiting for someone else's. They find many of their thermals themselves and leave them before the gaggle. In a glide, nobody ahead shows them where it goes up. Low and in front (courage) or high and in front (thermal efficiency), their clock runs slow for long stretches. They can cross ESS in the pack, a few seconds behind others, and still win.
+
+**The one who loses time without noticing: the follower.** They fly well, make no mistake and stay with the lead group. But they never open: they climb in thermals others have marked and glide when the group glides. Their clock runs at real time from start to ESS. With today's leading points they score almost as much as the leaders; with Wakefield they drop back.
+
+**On a real task** (PWC Gemona 2026, task 3, a gaggle race):
+
+| | The opener (winner) | A follower |
+| --- | --- | --- |
+| Arrival at ESS | 15th | 18 s later, 25th |
+| Time among the race's first 10 | 77 min | 2 min |
+| Share of the flight without help | 46 % | 0 % |
+| Thermals climbed with nobody marking them | 43 % | 0 % |
+| Time credit | 10.2 min | 2.2 min |
+| Wakefield rank | **1st** | 37th |
+
+The credit is bounded (here at most 17.7 min): an autonomous but slow pilot cannot overtake a fast one. Wakefield does not reward being alone, it rewards initiative that makes progress.
+
 ## How it is computed
 
 For pilot *i* at time *t*, the field sums every other pilot *j*, at their current position and over their recent track:

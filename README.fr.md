@@ -16,6 +16,25 @@ Wakefield remplace les points de leading et les points de temps par un seul chro
 
 Être bas et devant est récompensé (le courage), être haut et devant aussi (l'efficacité en thermique) : ce qui compte, c'est de ne pas utiliser les autres.
 
+## Deux portraits pour comprendre
+
+**Celui qui gagne : l'ouvreur.** Il choisit sa ligne au lieu d'attendre celle des autres. Il trouve une bonne partie de ses thermiques lui-même et les quitte avant le gaggle. En transition, il n'a personne devant lui pour lui montrer où ça monte. Qu'il soit bas devant (le courage) ou haut devant (l'efficacité en thermique), son chrono tourne au ralenti pendant de longues phases. Il peut franchir l'ESS dans le paquet, quelques secondes après d'autres, et gagner quand même.
+
+**Celui qui perd du temps sans le voir : le suiveur.** Il vole bien, ne fait pas d'erreur et reste au contact du groupe de tête. Mais il n'ouvre jamais : il enroule les thermiques que d'autres ont marqués et part en transition quand le groupe part. Son chrono tourne en temps réel du start à l'arrivée. Avec le leading actuel, il marque presque autant que les leaders ; avec Wakefield, il recule.
+
+**Sur une vraie manche** (PWC Gemona 2026, manche 3, une course en gaggle) :
+
+| | L'ouvreur (vainqueur) | Un suiveur |
+| --- | --- | --- |
+| Arrivée à l'ESS | 15ᵉ | 18 s plus tard, 25ᵉ |
+| Temps passé parmi les 10 premiers de la course | 77 min | 2 min |
+| Part du vol sans aide | 46 % | 0 % |
+| Thermiques enroulés sans personne pour les marquer | 43 % | 0 % |
+| Crédit de temps | 10,2 min | 2,2 min |
+| Classement Wakefield | **1ᵉʳ** | 37ᵉ |
+
+Le crédit est borné (ici 17,7 min au plus) : un pilote autonome mais trop lent ne peut pas passer devant un pilote rapide. Wakefield ne récompense pas l'isolement, il récompense l'initiative qui fait avancer.
+
 ## Le calcul
 
 Les formules et les paramètres sont détaillés dans le [README en anglais](README.md#how-it-is-computed). En résumé :
