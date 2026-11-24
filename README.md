@@ -78,9 +78,15 @@ python3 compare.py                   # comparison with the official results (bot
 
 The task definitions are in `wakefield/parse.py` (`TASKS`). Distances use a flat projection, about 0.2 to 0.5 % shorter than the official ellipsoid distances.
 
-## Roadmap
+## The application
 
-A browser application where you load the competition waypoints, the task (XCTrack QR code or `.xctsk`) and the IGC tracks, with sliders for every parameter above, a thermal-discovery bonus, a switch for the landed pilots' time base, the animated replay, the live leaderboard and the comparison with official results. Everything runs locally, no server.
+[`app/`](app/) is a browser application: load the task (XCTrack QR code or `.xctsk`), the IGC tracks (zip) and, optionally, the official results, then tune every parameter with sliders and watch the animated replay, the live leaderboard and the final ranking. Everything runs locally, in a Web Worker: no track leaves the computer. A field takes about 5 to 10 seconds for a task of 120 pilots; ε, the thermal-discovery bonus and the landed pilots' time base recompute instantly.
+
+Online: **https://jantallus.github.io/wakefield-scoring/app/** (once GitHub Pages is on). Locally: `python3 -m http.server` at the repository root, then open `http://localhost:8000/app/`. The "example" button loads Gemona 2026 tasks 2 or 3 from `data/`.
+
+`app/core.js` holds the whole computation and also runs in Node: `node app/test/node_test.js data/gemona-2026/tasks/task3.xctsk.txt <folder of .igc files> data/gemona-2026/official/task3.csv`. It gives the same results as the Python pipeline.
+
+Third-party code in `app/vendor/`: [JSZip](https://stuk.github.io/jszip/) (MIT) and [jsQR](https://github.com/cozmo/jsQR) (Apache 2.0).
 
 ## Data
 

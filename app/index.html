@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wakefield, scoring par champ</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: instrument de scoring, précis et sobre.
+   IDEA: le poste du directeur d'épreuve : données, réglages, replay, résultats.
+   PICTURE: la carte animée de la manche, champ magenta, pilotes colorés par régime.
+   COLOUR and TYPE: terrain ardoise, champ magenta, vert/orange/gris pour les régimes ; Barlow.
+   LAYOUT: données puis réglages, replay + leaderboard, résultats ; une colonne sur téléphone. */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#0c1216);--ink:light-dark(#10161c,#e8edf1);--mut:light-dark(#5a6670,#93a0aa);
+--line:light-dark(#e3e7ea,#1f2a31);--card:light-dark(#f5f7f8,#121b21);--acc:#e0408f;--auto:#35c46f;--mid:#f2a33a;--help:#9aa5ae;--err:#d6453d}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:1240px;margin:0 auto;padding:clamp(16px,3vw,36px) max(4vw,14px)}
+h1{font:600 clamp(30px,4.4vw,44px)/1.05 'Barlow Condensed',Barlow,sans-serif;margin:0 0 6px}
+h2{font:600 26px/1.1 'Barlow Condensed',Barlow,sans-serif;margin:34px 0 10px}
+h3{font:600 19px/1.2 Barlow;margin:0 0 8px}
+.lead{color:var(--mut);margin:0 0 14px;max-width:76ch}
+.card{background:var(--card);border-radius:10px;padding:14px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+label.f{display:block;font-weight:600;margin-bottom:4px}
+.hint{color:var(--mut);font-size:14px}
+input[type=file]{font:15px Barlow;max-width:100%}
+input[type=text],input[type=number],select,textarea{font:16px Barlow;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);min-height:44px}
+textarea{width:100%;min-height:64px;font-size:14px}
+button{font:600 15px Barlow;min-height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.status{margin-top:10px;font-weight:500}.status.err{color:var(--err)}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--acc);width:0}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{font-weight:500;color:var(--mut);text-align:left;padding:4px 6px;font-size:13px}
+td{padding:5px 6px;border-top:1px solid var(--line);white-space:nowrap}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+#tp input,#tp select{min-height:36px;padding:4px 6px;font-size:15px;width:100%}
+#tp td{padding:3px 4px}
+.sl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center;margin:8px 0}
+.sl label{font-weight:500}.sl b{font-variant-numeric:tabular-nums;text-align:right;min-width:5em}
+.sl input{grid-column:1/-1;width:100%;accent-color:var(--acc);height:30px}
+.sl .hint{grid-column:1/-1;margin-top:-4px}
+.chk{display:flex;gap:10px;align-items:center;min-height:44px}
+.chk input{width:22px;height:22px;accent-color:var(--acc)}
+.grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:18px;align-items:start}
+@media(max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.fig{position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:#12202a;touch-action:manipulation}
+.fig canvas{position:absolute;inset:0;width:100%;height:100%}
+.hud{position:absolute;left:10px;top:8px;color:#e8eef2;font:600 15px Barlow;text-shadow:0 1px 2px #000a;pointer-events:none}
+.empty[hidden]{display:none}
+.empty{position:absolute;inset:0;display:grid;place-items:center;color:#9fb0bb;font-weight:600;text-align:center;padding:20px}
+.seg{display:flex}.seg button{border-radius:0}.seg button:first-child{border-radius:8px 0 0 8px}.seg button:last-child{border-radius:0 8px 8px 0}
+.scrub{width:100%;accent-color:var(--acc);height:44px;margin-top:6px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;color:var(--mut);font-size:14px}
+.dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.sel{margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--card);font-size:15px;min-height:44px}
+#tb tr{cursor:pointer}tr.me td{background:light-dark(#fde7f2,#2a1622)}
+.nm{overflow:hidden;text-overflow:ellipsis;max-width:11em}
+.rb{display:inline-block;height:8px;border-radius:4px;background:var(--line);width:44px;overflow:hidden;vertical-align:1px;margin-right:4px}.rb i{display:block;height:100%}
+.up{color:var(--auto)}.dn{color:#e0603a}
+.kpi{display:flex;flex-wrap:wrap;gap:10px 28px;margin:6px 0 12px}.kpi div{font-size:14px;color:var(--mut)}.kpi b{display:block;font-size:24px;color:var(--ink);font-variant-numeric:tabular-nums}
+@media(max-width:600px){table{font-size:13px}}
+</style></head><body>
+<div class="wrap">
+<h1>Wakefield : rejouer une manche avec le leading par champ</h1>
+<p class="lead">Chargez la manche et les traces IGC, réglez le champ, et voyez le classement en temps corrigé. Tout le calcul se fait dans votre navigateur : aucune trace n'est envoyée. <a href="https://github.com/jantallus/wakefield-scoring">Le concept et le code sur GitHub</a>.</p>
+
+<div class="card">
+ <h3>Essayer avec un exemple</h3>
+ <div class="row" style="margin-top:0"><select id="exSel" aria-label="Exemple"><option value="task3">PWC Gemona 2026, manche 3 (123 pilotes)</option><option value="task2">PWC Gemona 2026, manche 2 (124 pilotes)</option></select><button id="exBtn">Charger et calculer</button></div>
+</div>
+
+<h2>1. Données de la manche</h2>
+<div class="cols">
+ <div class="card">
+  <label class="f" for="fTask">Manche</label>
+  <input id="fTask" type="file" accept=".xctsk,.txt,.json,image/*">
+  <p class="hint">Fichier .xctsk, ou photo / capture du QR code XCTrack. Vous pouvez aussi coller le texte « XCTSK:… » :</p>
+  <textarea id="taskText" placeholder="XCTSK:{...}"></textarea>
+  <div class="row"><button id="taskRead">Lire la manche</button></div>
+ </div>
+ <div class="card">
+  <label class="f" for="fWpt">Balises (option)</label>
+  <input id="fWpt" type="file" accept=".wpt,.txt">
+  <p class="hint">Fichier CompeGPS .wpt, pour ajouter ou remplacer des balises dans le tableau de la manche.</p>
+  <label class="f" for="fIgc" style="margin-top:12px">Traces IGC</label>
+  <input id="fIgc" type="file" accept=".zip,.igc" multiple>
+  <p class="hint">Un zip ou plusieurs fichiers .igc.</p>
+  <label class="f" for="fOff" style="margin-top:12px">Classement officiel (option)</label>
+  <input id="fOff" type="file" accept=".csv,.txt">
+  <p class="hint">CSV avec au moins les colonnes name et total ; lead pour comparer le leading.</p>
+ </div>
+</div>
+<div class="card" style="margin-top:14px">
+ <h3>Parcours</h3>
+ <div class="scroll"><table id="tp"><thead><tr><th>Type</th><th>Nom</th><th class="n">Latitude</th><th class="n">Longitude</th><th class="n">Rayon (km)</th><th></th></tr></thead><tbody></tbody></table></div>
+ <datalist id="wptList"></datalist>
+ <div class="row"><button id="tpAdd">Ajouter une balise</button>
+  <label>Porte de start (UTC) <input id="gate" type="text" placeholder="11:15" size="6"></label>
+  <label>Deadline (UTC) <input id="deadline" type="text" placeholder="16:00" size="6"></label>
+  <label>Start <select id="dir"><option value="">auto</option><option value="ENTER">en entrant</option><option value="EXIT">en sortant</option></select></label>
+  <label>Décalage horaire local <input id="utcOff" type="number" value="2" step="0.5" style="width:5em"> h</label></div>
+ <p class="hint" id="taskInfo">Aucune manche chargée.</p>
+ <div class="row"><button id="run" class="pri" disabled>Calculer</button><span id="trkInfo" class="hint">Aucune trace chargée.</span></div>
+ <div class="status" id="status" role="status"></div><div class="bar" aria-hidden="true"><i id="prog"></i></div>
+</div>
+
+<h2>2. Réglages</h2>
+<div class="cols">
+ <div class="card"><h3>Champ</h3><p class="hint">Un changement demande de recalculer le champ (quelques secondes).</p><div id="slField"></div>
+  <div class="row"><button id="reField" disabled>Recalculer le champ</button><button id="reset">Valeurs par défaut</button></div></div>
+ <div class="card"><h3>Classement</h3><p class="hint">Recalculé aussitôt.</p><div id="slClock"></div>
+  <div class="chk"><input id="lastEss" type="checkbox"><label for="lastEss">Base de temps des posés : dernier arrivé à l'ESS (sinon : deadline)</label></div>
+  <h3 style="margin-top:14px">Validation</h3><div id="slPrep"></div></div>
+</div>
+
+<h2>3. Replay</h2>
+<div class="grid">
+<div>
+ <div class="fig" id="fig"><canvas id="cv"></canvas><div class="hud" id="hud"></div><div class="empty" id="empty">Le replay s'affichera ici après le calcul.</div></div>
+ <input id="scrub" class="scrub" type="range" min="0" max="1" step="1" value="0" aria-label="Moment de la manche">
+ <div class="row" style="margin-top:4px">
+  <button id="play">Lecture</button>
+  <div class="seg" role="group" aria-label="Vitesse"><button data-s="1">1 min/s</button><button data-s="3" class="on">3 min/s</button><button data-s="10">10 min/s</button></div>
+  <div class="seg" role="group" aria-label="Caméra"><button data-c="head" class="on">Tête</button><button data-c="sel">Pilote suivi</button><button data-c="all">Ensemble</button></div>
+  <button id="tF" class="on">Champ</button><button id="tR" class="on">Traînées</button>
+ </div>
+ <div class="legend"><span><i class="dot" style="background:var(--auto)"></i>Autonome</span><span><i class="dot" style="background:var(--mid)"></i>Semi-aidé</span><span><i class="dot" style="background:var(--help)"></i>Aidé</span><span>Taille du point = altitude</span></div>
+ <div class="sel" id="sel">Touchez un pilote sur la carte ou dans le classement pour le suivre.</div>
+</div>
+<div class="card" style="padding:10px 6px 6px"><h3 style="margin:2px 8px 8px">Leaderboard en temps projeté</h3>
+ <table><thead><tr><th class="n">#</th><th></th><th>Pilote</th><th class="n">Temps</th><th>Chrono</th></tr></thead><tbody id="tb"></tbody></table>
+ <div class="row" style="margin:8px"><button id="all">Afficher tous les pilotes</button></div>
+</div>
+</div>
+
+<h2>4. Résultats</h2>
+<div class="kpi" id="kpi"><div>Aucun calcul pour l'instant.</div></div>
+<div id="cmp"></div>
+<h3>Pilotes à l'ESS</h3>
+<div class="scroll"><table id="fin"><thead><tr><th class="n">Place</th><th class="n">Arrivée</th><th></th><th>Pilote</th><th class="n">Temps réel</th><th class="n">Temps corrigé</th><th class="n">Crédit</th><th class="n">Km autonomes</th><th class="n">Min dans le top 10</th></tr></thead><tbody></tbody></table></div>
+<h3 style="margin-top:18px">Pilotes posés</h3>
+<p class="hint">Toujours derrière les pilotes à l'ESS. Distance corrigée = distance + ε × km autonomes, plafonnée à la distance de la manche ; la distance réelle départage les égalités.</p>
+<div class="scroll"><table id="land"><thead><tr><th class="n">Place</th><th>Pilote</th><th class="n">Distance</th><th class="n">Bonus</th><th class="n">Distance corrigée</th><th class="n">Temps estimé</th></tr></thead><tbody></tbody></table></div>
+<div class="row"><button id="copyCsv" disabled>Copier le classement (CSV)</button><a id="dlCsv" href="#" download="wakefield-classement.csv" hidden>Télécharger le CSV</a></div>
+<p class="hint" style="margin-top:24px">Wakefield, licence MIT. Distances calculées en projection plane (environ 0,2 à 0,5 % de moins que les distances officielles sur l'ellipsoïde).</p>
+</div>
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/jsQR.js"></script>
+<script src="core.js"></script>
+<script>
+{
+const W = window.Wakefield, D0 = W.DEFAULTS;
+const $ = id => document.getElementById(id);
+const fmt = s => { if (s == null || Number.isNaN(s)) return "—"; s = Math.max(0, Math.round(s)); return Math.floor(s / 3600) + ":" + String(Math.floor(s % 3600 / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); };
+const num = (v, d = 1) => v == null || Number.isNaN(v) ? "—" : v.toFixed(d).replace(".", ",");
+const hhmm = s => s == null ? "" : String(Math.floor(s / 3600)).padStart(2, "0") + ":" + String(Math.floor(s % 3600 / 60)).padStart(2, "0");
+const parseHM = v => { const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(v).trim()); return m ? +m[1] * 3600 + +m[2] * 60 + (+m[3] || 0) : null; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ---------- state ---------- */
+let wpts = [], tps = [], tracks = null, official = null, opt = Object.assign({}, D0), result = null, prepared = false, busy = false;
+const worker = new Worker("worker.js");
+
+/* ---------- sliders ---------- */
+const SL = {
+ field: [
+  ["sigA", "Étendue du champ devant", 1, 6, 0.1, v => num(v) + " km", "Longueur du cône d'aide devant chaque pilote."],
+  ["sigL0", "Largeur du sillage", 0.2, 2, 0.05, v => num(v, 2) + " km", "Largeur du cône juste derrière un pilote."],
+  ["sigLk", "Élargissement du sillage", 0, 0.5, 0.01, v => num(v, 2) + " km/km", ""],
+  ["sigB", "Portée vers l'arrière", 0.1, 1.5, 0.05, v => num(v, 2) + " km", "Un pilote derrière vous ne vous aide presque pas."],
+  ["phi0", "Force du champ (seuil Φ₀)", 0.5, 30, 0.5, v => num(v), "Plus il est haut, plus il faut de pilotes autour pour être « aidé »."],
+  ["Tm", "Durée du sillage", 60, 600, 30, v => num(v / 60) + " min", "Temps pendant lequel la trace d'un pilote marque encore le chemin."],
+  ["trailW", "Force du sillage", 0, 3, 0.1, v => "× " + num(v), "Poids des traces passées par rapport aux positions actuelles."],
+  ["k", "Angle de vue", 0.5, 4, 0.5, v => num(v), "Décroissance vers la verticale : un gaggle à votre aplomb ne vous aide pas."],
+  ["sinkW", "Poids d'un point sans montée", 0, 1, 0.05, v => num(v, 2), "Un pilote qui monte marque un thermique (poids 1)."]],
+ clock: [
+  ["eps", "Prix du risque ε", 0, 0.3, 0.01, v => num(v, 2), "Temps maximal gagné sur une manche entièrement menée : ε × distance / v_ref."],
+  ["disc", "Découverte de thermique (expérimental)", 0, 0.5, 0.05, v => num(v, 2), "Crédit pendant les montées là où personne ne marquait."]],
+ prep: [["tol", "Tolérance des cylindres", 0, 0.01, 0.001, v => num(v * 100) + " %", "Catégorie 2 FAI : 0,5 %."]]
+};
+function buildSliders() {
+ for (const [grp, el] of [["field", "slField"], ["clock", "slClock"], ["prep", "slPrep"]]) {
+  $(el).innerHTML = SL[grp].map(([k, l, mi, ma, st, f, h]) => `<div class="sl"><label for="s_${k}">${l}</label><b id="v_${k}"></b><input id="s_${k}" type="range" min="${mi}" max="${ma}" step="${st}" value="${opt[k]}">${h ? `<span class="hint">${h}</span>` : ""}</div>`).join("");
+  for (const [k, , , , , f] of SL[grp]) {
+   const inp = $("s_" + k), out = $("v_" + k), show = () => { out.textContent = f(+inp.value); };
+   show();
+   inp.addEventListener("input", () => { opt[k] = +inp.value; show(); if (grp === "field") $("reField").disabled = !result || busy; if (grp === "prep" && result) { prepared = false; $("reField").disabled = busy; } });
+   if (grp === "clock") inp.addEventListener("change", () => result && !busy && send("clock"));
+  }
+ }
+}
+$("lastEss").addEventListener("change", e => { opt.landedBase = e.target.checked ? "lastEss" : "deadline"; if (result && !busy) send("clock"); });
+$("reset").onclick = () => { opt = Object.assign({}, D0); $("lastEss").checked = false; buildSliders(); if (result && !busy) { prepared = false; runAll(); } };
+$("reField").onclick = () => runAll(true);
+
+/* ---------- task editor ---------- */
+const TYPES = ["TAKEOFF", "SSS", "TURN", "ESS", "GOAL"], TL = { TAKEOFF: "Décollage", SSS: "SSS (start)", TURN: "Balise", ESS: "ESS", GOAL: "But" };
+function renderTask() {
+ $("tp").querySelector("tbody").innerHTML = tps.map((p, i) => `<tr data-i="${i}"><td><select data-k="type">${TYPES.map(t => `<option value="${t}" ${p.type === t ? "selected" : ""}>${TL[t]}</option>`).join("")}</select></td>
+ <td><input data-k="name" list="wptList" value="${esc(p.name)}" size="9"></td><td><input data-k="lat" type="number" step="0.00001" value="${p.lat}"></td><td><input data-k="lon" type="number" step="0.00001" value="${p.lon}"></td>
+ <td><input data-k="radius" type="number" step="0.1" min="0" value="${p.radius}"></td><td><button data-del="${i}" aria-label="Supprimer la balise">✕</button></td></tr>`).join("");
+ checkTask();
+}
+$("tp").addEventListener("change", e => {
+ const tr = e.target.closest("tr"), k = e.target.dataset.k; if (!tr || !k) return;
+ const p = tps[+tr.dataset.i]; p[k] = k === "type" || k === "name" ? e.target.value : +e.target.value;
+ if (k === "name") { const w = wpts.find(w => w.id === p.name); if (w) { p.lat = w.lat; p.lon = w.lon; renderTask(); return; } }
+ checkTask();
+});
+$("tp").addEventListener("click", e => { const d = e.target.dataset.del; if (d != null) { tps.splice(+d, 1); renderTask(); } });
+$("tpAdd").onclick = () => { const g = tps.findIndex(p => p.type === "ESS"); tps.splice(g < 0 ? tps.length : g, 0, { type: "TURN", name: "", lat: 0, lon: 0, radius: 1 }); renderTask(); };
+["gate", "deadline", "dir"].forEach(id => $(id).addEventListener("change", checkTask));
+function taskSpec() { return { tps: tps.map(p => Object.assign({}, p)), gate: parseHM($("gate").value), deadline: parseHM($("deadline").value), dir: $("dir").value || null }; }
+function checkTask() {
+ let ok = false;
+ try {
+  const s = taskSpec(); if (s.gate == null) throw new Error("Indiquez l'heure de la porte de start (UTC).");
+  const t = W.normaliseTask(s);
+  $("taskInfo").textContent = `${t.course.length} cylindres du start à l'ESS · ${num(t.D, 2)} km du start à l'ESS, ${num(t.Dtoff, 2)} km depuis le décollage · start ${t.dir === "EXIT" ? "en sortant" : "en entrant"} · porte ${hhmm(s.gate)} UTC` + (s.deadline != null ? ` · deadline ${hhmm(s.deadline)} UTC` : " · pas de deadline");
+  ok = true;
+ } catch (err) { $("taskInfo").textContent = tps.length ? err.message : "Aucune manche chargée."; }
+ $("run").disabled = !(ok && tracks && tracks.length) || busy;
+ prepared = false;
+ return ok;
+}
+function setTask(t) {
+ tps = t.all.map(p => ({ type: p.type, name: p.name, lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5), radius: p.radius }));
+ $("gate").value = hhmm(t.gate); $("deadline").value = hhmm(t.deadline); $("dir").value = "";
+ renderTask();
+}
+function readTaskText(text) { try { setTask(W.parseXctsk(text)); status(""); } catch (err) { status("Manche illisible : " + err.message, true); } }
+$("taskRead").onclick = () => readTaskText($("taskText").value);
+$("fTask").addEventListener("change", async e => {
+ const f = e.target.files[0]; if (!f) return;
+ if (f.type.startsWith("image/")) {
+  const img = await createImageBitmap(f), c = document.createElement("canvas"), sc = Math.min(1, 1600 / Math.max(img.width, img.height));
+  c.width = img.width * sc; c.height = img.height * sc; const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+  const d = x.getImageData(0, 0, c.width, c.height), q = jsQR(d.data, c.width, c.height);
+  if (!q) { status("Aucun QR code lisible dans l'image : essayez une capture plus nette, ou collez le texte.", true); return; }
+  $("taskText").value = q.data; readTaskText(q.data);
+ } else readTaskText(await f.text());
+});
+$("fWpt").addEventListener("change", async e => {
+ const f = e.target.files[0]; if (!f) return; wpts = W.parseWpt(await f.text());
+ $("wptList").innerHTML = wpts.map(w => `<option value="${esc(w.id)}">${esc(w.desc)}</option>`).join("");
+ status(wpts.length + " balises lues : tapez un code (ex. H51) dans la colonne Nom pour reprendre ses coordonnées.");
+});
+
+/* ---------- tracks and official results ---------- */
+async function readTracks(files) {
+ const out = [];
+ for (const f of files) {
+  if (/\.zip$/i.test(f.name)) { const z = await JSZip.loadAsync(f); for (const n of Object.keys(z.files).sort()) if (/\.igc$/i.test(n) && !z.files[n].dir) out.push({ name: n.split("/").pop(), text: await z.files[n].async("binarystring") }); }
+  else if (/\.igc$/i.test(f.name)) out.push({ name: f.name, text: await f.text() });
+ }
+ return out;
+}
+$("fIgc").addEventListener("change", async e => { status("Lecture des fichiers…"); tracks = await readTracks([...e.target.files]); $("trkInfo").textContent = tracks.length + " traces IGC chargées."; status(""); checkTask(); });
+$("fOff").addEventListener("change", async e => {
+ const f = e.target.files[0]; if (!f) return;
+ try { official = W.parseOfficialCsv(await f.text()); status(official.length + " lignes de classement officiel lues."); if (result) worker.postMessage({ cmd: "official", official, opt }); }
+ catch (err) { status(err.message, true); }
+});
+
+/* ---------- worker ---------- */
+let queue = [];
+function status(t, err) { $("status").textContent = t; $("status").classList.toggle("err", !!err); }
+function setBusy(b) { busy = b; $("run").disabled = b || !(tracks && tracks.length); $("reField").disabled = true; $("exBtn").disabled = b; }
+function send(cmd) { setBusy(true); worker.postMessage({ cmd, opt }); }
+function runAll(fieldOnly) {
+ if (!checkTask()) return;
+ setBusy(true); $("prog").style.width = "0";
+ if (!fieldOnly || !prepared) {
+  worker.postMessage({ cmd: "load", task: taskSpec(), tracks, official });
+  queue = ["prepare", "field"];
+ } else queue = ["field"];
+}
+worker.onmessage = e => {
+ const m = e.data;
+ if (m.type === "progress") { status(m.stage + "… " + Math.round(m.p * 100) + " %"); $("prog").style.width = (m.p * 100) + "%"; return; }
+ if (m.type === "error") { setBusy(false); queue = []; status("Erreur : " + m.message, true); return; }
+ if (m.type === "loaded" && m.skipped) status(m.skipped + " fichiers ignorés (pas assez de points).");
+ if (m.type === "prepared") { prepared = true; $("trkInfo").textContent = `${m.n} pilotes, ${m.started} ont validé le start, ${m.ess} à l'ESS.`; }
+ if (m.type === "result") { setBusy(false); $("prog").style.width = "100%"; status("Calcul terminé."); show(m); return; }
+ const next = queue.shift(); if (next) worker.postMessage({ cmd: next, opt });
+};
+
+/* ---------- example ---------- */
+$("exBtn").onclick = async () => {
+ const t = $("exSel").value, base = "../data/gemona-2026/";
+ try {
+  setBusy(true); status("Téléchargement de l'exemple (environ 18 Mo)…");
+  const [q, z, o] = await Promise.all([fetch(base + "tasks/" + t + ".xctsk.txt").then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }), fetch(base + t + "-igc.zip").then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); }), fetch(base + "official/" + t + ".csv").then(r => r.ok ? r.text() : null)]);
+  $("taskText").value = q; setTask(W.parseXctsk(q));
+  tracks = await readTracks([new File([z], t + ".zip")]); $("trkInfo").textContent = tracks.length + " traces IGC chargées.";
+  official = o ? W.parseOfficialCsv(o) : null;
+  setBusy(false); runAll();
+ } catch (err) { setBusy(false); status("Impossible de charger l'exemple (" + err.message + "). Ouvrez l'application depuis le dépôt ou GitHub Pages.", true); }
+};
+
+/* ---------- replay ---------- */
+const cv = $("cv"), ctx = cv.getContext("2d"), fig = $("fig"), tb = $("tb"), scrub = $("scrub");
+let Dt = null, NF = 0, f = 0, playing = false, speed = 3, cam = "head", showF = true, showR = true, sel = null, showAll = false, Wd = 0, Hd = 0, dpr = 1, cx = 0, cy = 0, span = 24, lastHeatF = -1, lastHeatT = 0, lastBoardF = -1, Kp = Object.assign({}, D0);
+const heat = document.createElement("canvas"), hctx = heat.getContext("2d"); let hImg = null;
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const regCol = g => g < 0.35 ? "#35c46f" : g < 0.7 ? "#f2a33a" : "#9aa5ae";
+const clock = s => { s = Math.round(s + (+$("utcOff").value || 0) * 3600); s = ((s % 86400) + 86400) % 86400; return String(Math.floor(s / 3600)).padStart(2, "0") + ":" + String(Math.floor(s % 3600 / 60)).padStart(2, "0"); };
+const short = n => { const p = n.trim().split(/\s+/); return p.length > 1 ? p[0][0] + ". " + p.slice(1).join(" ") : n; };
+const landed = (p, k) => p.s[k] === 3 && !p.ess;
+const ord = k => [...Dt.pilots].sort((a, b) => { const la = landed(a, k), lb = landed(b, k); return la !== lb ? la - lb : la ? (a.fin - b.fin) || (b.dReal - a.dReal) : a.p[k] - b.p[k]; });
+function pos(p, ff) { const a = Math.floor(ff), b = Math.min(NF - 1, a + 1), u = ff - a; return [(p.x[a] + (p.x[b] - p.x[a]) * u) / 100, (p.y[a] + (p.y[b] - p.y[a]) * u) / 100, (p.z[a] + (p.z[b] - p.z[a]) * u) * 10]; }
+function resize() { dpr = devicePixelRatio || 1; Wd = fig.clientWidth; Hd = fig.clientHeight; cv.width = Wd * dpr; cv.height = Hd * dpr; heat.width = Math.max(20, Math.round(Wd / 9)); heat.height = Math.max(15, Math.round(Hd / 9)); hImg = hctx.createImageData(heat.width, heat.height); lastHeatF = -1; }
+const ro = new ResizeObserver(resize); ro.observe(fig);
+const sc = () => Wd / span, wx = x => (x - cx) * sc() + Wd / 2, wy = y => Hd / 2 - (y - cy) * sc();
+function camTarget() {
+ const k = Math.round(f);
+ if (cam === "all") { const c = Dt.task.cyl, xs = c.flatMap(q => [q.x - q.r, q.x + q.r]), ys = c.flatMap(q => [q.y - q.r, q.y + q.r]); const w = Math.max(Math.max(...xs) - Math.min(...xs), (Math.max(...ys) - Math.min(...ys)) * Wd / Hd) * 1.05; return [(Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...ys) + Math.min(...ys)) / 2, w]; }
+ if (cam === "sel" && sel) { const [x, y] = pos(sel, f); return [x, y, 22]; }
+ const fly = Dt.pilots.filter(p => p.s[k] === 1).sort((a, b) => a.p[k] - b.p[k]).slice(0, 8), src = fly.length ? fly : Dt.pilots.filter(p => p.s[k] === 2);
+ if (!src.length) return [cx, cy, 24]; let x = 0, y = 0; src.forEach(p => { const q = pos(p, f); x += q[0]; y += q[1]; }); return [x / src.length, y / src.length, 24];
+}
+function updHeat() {
+ if (!Dt || !hImg) return; const k = Math.round(f), gw = heat.width, gh = heat.height, d = hImg.data, s = sc();
+ const fly = Dt.pilots.filter(p => p.s[k] === 1);
+ const oz = sel && sel.s[k] === 1 ? sel.z[k] * 10 : (fly.length ? fly.map(p => p.z[k]).sort((a, b) => a - b)[fly.length >> 1] * 10 : 1500);
+ const x0 = cx - Wd / 2 / s - 4, x1 = cx + Wd / 2 / s + 4, y0 = cy - Hd / 2 / s - 4, y1 = cy + Hd / 2 / s + 4, src = [], nt = Dt.step / Kp.Tm * Kp.trailW, lag = Math.round(Kp.keep / Dt.step);
+ for (const p of Dt.pilots) { if (p === sel) continue;
+  for (let j = 0; j <= lag; j++) { const i = k - j; if (i < 1) break; if (p.s[i] !== 1) continue;
+   const x = p.x[i] / 100, y = p.y[i] / 100; if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+   let hx = x - p.x[i - 1] / 100, hy = y - p.y[i - 1] / 100; const hl = Math.hypot(hx, hy); if (hl < 1e-3) { hx = 0; hy = 0; } else { hx /= hl; hy /= hl; }
+   const c = (p.z[i] - p.z[i - 1]) * 10 / Dt.step > 0.3; src.push(x, y, p.z[i] * 10, hx, hy, (j ? nt : 1) * Math.exp(-j * Dt.step / Kp.Tm) * (c ? Kp.climbW : Kp.sinkW)); } }
+ const ka = Kp.k / 4, kb = Kp.k / 2;
+ for (let r = 0; r < gh; r++) for (let q = 0; q < gw; q++) { const X = cx + ((q + 0.5) / gw * Wd - Wd / 2) / s, Y = cy - ((r + 0.5) / gh * Hd - Hd / 2) / s; let phi = 0;
+  for (let m = 0; m < src.length; m += 6) { const dx = src[m] - X, dy = src[m + 1] - Y; if (dx > 6 || dx < -6 || dy > 6 || dy < -6) continue;
+   const dz = (src[m + 2] - oz) / 1000, dh2 = dx * dx + dy * dy, r2 = dh2 + dz * dz, al = dx * src[m + 3] + dy * src[m + 4]; let Kk;
+   if (al > 0 && (src[m + 3] || src[m + 4])) { const sl = Kp.sigL0 + Kp.sigLk * al, lat2 = Math.max(0, dh2 - al * al); Kk = Math.exp(-(al * al) / (Kp.sigA * Kp.sigA) - lat2 / (sl * sl) - dz * dz); }
+   else Kk = Math.exp(-r2 / (Kp.sigB * Kp.sigB));
+   if (Kk < 1e-4) continue; phi += Kk * (r2 > 1e-6 ? Math.pow(dh2 / r2, dz > 0 ? ka : kb) : 1) * src[m + 5]; }
+  const g = 1 - Math.exp(-phi / Kp.phi0), o = (r * gw + q) * 4; d[o] = 224; d[o + 1] = 64; d[o + 2] = 143; d[o + 3] = Math.round(Math.pow(g, 0.8) * 175); }
+ hctx.putImageData(hImg, 0, 0);
+}
+function draw() {
+ const s = sc(), k = Math.round(f); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = "#12202a"; ctx.fillRect(0, 0, Wd, Hd);
+ if (showF && cam !== "all") { ctx.imageSmoothingEnabled = true; ctx.drawImage(heat, 0, 0, Wd, Hd); }
+ const cyl = Dt.task.cyl; ctx.lineWidth = 1.2;
+ cyl.forEach((c, i) => { ctx.strokeStyle = i === 0 || i === cyl.length - 1 ? "#ffffff90" : "#ffffff55"; ctx.setLineDash(i === 0 ? [5, 5] : []); ctx.beginPath(); ctx.arc(wx(c.x), wy(c.y), c.r * s, 0, 7); ctx.stroke(); }); ctx.setLineDash([]);
+ ctx.strokeStyle = "#ffffff40"; ctx.setLineDash([3, 6]); ctx.beginPath(); Dt.task.route.forEach((p, i) => i ? ctx.lineTo(wx(p[0]), wy(p[1])) : ctx.moveTo(wx(p[0]), wy(p[1]))); ctx.stroke(); ctx.setLineDash([]);
+ ctx.fillStyle = "#ffffffb8"; ctx.font = "600 12px Barlow"; cyl.forEach(c => { const X = wx(c.x), Y = wy(c.y); if (X > -40 && X < Wd + 40 && Y > -20 && Y < Hd + 20) ctx.fillText(c.n, X + 4, Y - 4); });
+ if (showR && cam !== "all") { const lag = Math.round(Kp.keep / Dt.step); for (const p of Dt.pilots) { if (p.s[k] !== 1 && p !== sel) continue; ctx.strokeStyle = p === sel ? "#ffffffd0" : "#ffffff26"; ctx.lineWidth = p === sel ? 2 : 1; ctx.beginPath(); const j0 = Math.max(0, k - lag); for (let j = j0; j <= k; j++) { const X = wx(p.x[j] / 100), Y = wy(p.y[j] / 100); j === j0 ? ctx.moveTo(X, Y) : ctx.lineTo(X, Y); } ctx.stroke(); } }
+ for (const p of Dt.pilots) { const [x, y, z] = pos(p, f), X = wx(x), Y = wy(y); if (X < -20 || X > Wd + 20 || Y < -20 || Y > Hd + 20) continue; const st = p.s[k];
+  const r = cam === "all" ? 2.5 : st === 1 ? 2.5 + z / 650 : 2.5; ctx.globalAlpha = st === 1 ? 1 : st === 2 ? 0.8 : 0.35; ctx.fillStyle = st === 2 ? "#ffffff" : regCol(p.g[k] / 100);
+  ctx.beginPath(); ctx.arc(X, Y, r, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+  if (p === sel) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X, Y, r + 5, 0, 7); ctx.stroke(); ctx.fillStyle = "#fff"; ctx.font = "600 13px Barlow"; ctx.fillText(short(p.n), X + r + 7, Y - r - 3); } }
+ $("hud").textContent = clock(Dt.t0 + f * Dt.step) + " · en vol " + Dt.pilots.filter(p => p.s[k] === 1).length + " · ESS " + Dt.pilots.filter(p => p.s[k] === 2).length;
+}
+function renderBoard() {
+ const k = Math.round(f), R = ord(k), prev = new Map(ord(Math.max(0, k - 6)).map((p, i) => [p, i]));
+ let rows = R.map((p, i) => ({ p, i })); if (!showAll) { const top = rows.slice(0, 15); if (sel && !top.some(r => r.p === sel)) top.push(rows.find(r => r.p === sel)); rows = top; }
+ tb.innerHTML = rows.map(({ p, i }) => { const d = prev.get(p) - i, st = p.s[k], pc = p.r[k];
+  return `<tr data-i="${Dt.pilots.indexOf(p)}" class="${p === sel ? "me" : ""}"><td class="n">${i + 1}</td><td class="${d > 0 ? "up" : d < 0 ? "dn" : ""}">${d > 0 ? "▲" : d < 0 ? "▼" : ""}</td>
+  <td class="nm"><i class="dot" style="background:${st === 2 ? "#fff;border:1px solid var(--line)" : regCol(p.g[k] / 100)}"></i>${esc(short(p.n))}</td><td class="n">${fmt(landed(p, k) ? p.fin : p.p[k])}</td>
+  <td>${st === 1 ? `<span class="rb"><i style="width:${pc}%;background:${regCol(p.g[k] / 100)}"></i></span>${pc} %` : st === 2 ? "ESS" : "posé"}</td></tr>`; }).join("");
+}
+function renderSel() {
+ if (!sel) { $("sel").textContent = "Touchez un pilote sur la carte ou dans le classement pour le suivre."; return; }
+ const k = Math.round(f), p = sel, st = p.s[k];
+ $("sel").innerHTML = `<b>${esc(p.n)}</b> · ${st === 1 ? Math.round(p.z[k] * 10) + " m · aide g = " + num(p.g[k] / 100, 2) + " · chrono à " + p.r[k] + " % du temps réel" : st === 2 ? "à l'ESS" : "posé"} · ${landed(p, k) ? "temps estimé " + fmt(p.fin) : "temps projeté " + fmt(p.p[k])}` +
+  (p.ess != null ? ` · final : réel ${fmt(p.ess)}, corrigé ${fmt(p.fin)}, crédit ${num((p.ess - p.fin) / 60)} min` : ` · posé à ${num(p.rem)} km de l'ESS, distance corrigée ${num(p.dCorr)} km`);
+}
+let last = performance.now();
+function loop(now) {
+ const dt = Math.min(0.1, (now - last) / 1000); last = now;
+ if (Dt) {
+  if (playing) { f += dt * speed * 60 / Dt.step; if (f >= NF - 1) { f = NF - 1; playing = false; setPlay(); } scrub.value = Math.round(f); }
+  const [tx, ty, ts] = camTarget(), a = reduce ? 1 : 0.08; cx += (tx - cx) * a; cy += (ty - cy) * a; span += (ts - span) * a;
+  if (showF && cam !== "all" && (Math.round(f) !== lastHeatF || now - lastHeatT > 900) && now - lastHeatT > 250) { updHeat(); lastHeatF = Math.round(f); lastHeatT = now; }
+  if (Math.round(f) !== lastBoardF) { renderBoard(); renderSel(); lastBoardF = Math.round(f); }
+  draw();
+ }
+ requestAnimationFrame(loop);
+}
+const setPlay = () => { $("play").textContent = playing ? "Pause" : "Lecture"; $("play").classList.toggle("on", playing); };
+$("play").onclick = () => { if (!Dt) return; if (f >= NF - 1) f = 0; playing = !playing; setPlay(); };
+document.querySelectorAll("[data-s]").forEach(b => b.onclick = () => { speed = +b.dataset.s; document.querySelectorAll("[data-s]").forEach(x => x.classList.toggle("on", x === b)); });
+document.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { cam = b.dataset.c; document.querySelectorAll("[data-c]").forEach(x => x.classList.toggle("on", x === b)); lastHeatF = -1; });
+const tog = (id, fn) => { const b = $(id); b.onclick = () => { b.classList.toggle("on", fn()); lastHeatF = -1; }; };
+tog("tF", () => showF = !showF); tog("tR", () => showR = !showR);
+$("all").onclick = e => { showAll = !showAll; e.target.textContent = showAll ? "Afficher les 15 premiers" : "Afficher tous les pilotes"; lastBoardF = -1; };
+scrub.oninput = () => { f = +scrub.value; lastHeatF = -1; };
+cv.addEventListener("pointerdown", e => { if (!Dt) return; const r = cv.getBoundingClientRect(), X = e.clientX - r.left, Y = e.clientY - r.top; let best = null, bd = 22;
+ for (const p of Dt.pilots) { const [x, y] = pos(p, f), d = Math.hypot(wx(x) - X, wy(y) - Y); if (d < bd) { bd = d; best = p; } } sel = best; lastHeatF = -1; lastBoardF = -1; });
+tb.addEventListener("click", e => { const tr = e.target.closest("tr"); if (!tr) return; const p = Dt.pilots[+tr.dataset.i]; sel = sel === p ? null : p; lastHeatF = -1; lastBoardF = -1; });
+
+/* ---------- results ---------- */
+let csv = "";
+function show(m) {
+ const keepF = Dt ? f / Math.max(1, NF - 1) : null, selName = sel ? sel.n : null;
+ result = m; Kp = Object.assign({}, D0, m.opt);
+ Dt = m.replay; NF = Dt.pilots[0] ? Dt.pilots[0].x.length : 0; scrub.max = Math.max(0, NF - 1);
+ sel = selName ? Dt.pilots.find(p => p.n === selName) || null : null;
+ if (keepF === null) { f = Math.min(NF - 1, Math.round(15 * 60 / Dt.step)); const [tx, ty, ts] = camTarget(); cx = tx; cy = ty; span = ts; playing = !reduce; setPlay(); }
+ else f = Math.round(keepF * (NF - 1));
+ scrub.value = Math.round(f); $("empty").hidden = true; lastHeatF = -1; lastBoardF = -1;
+ const R = m.ranking, ess = R.filter(r => r.ess != null), land = R.filter(r => r.ess == null);
+ $("kpi").innerHTML = `<div><b>${num(m.D, 2)} km</b>du start à l'ESS</div><div><b>${num(m.vref)} km/h</b>v_ref</div><div><b>${num(m.maxCredit / 60)} min</b>crédit maximal</div><div><b>${ess.length} / ${R.length}</b>pilotes à l'ESS</div><div><b>${fmt(m.base)}</b>base de temps des posés</div>`;
+ document.querySelector("#fin tbody").innerHTML = ess.map(r => { const d = r.realRank - r.rank;
+  return `<tr><td class="n">${r.rank}</td><td class="n">${r.realRank}</td><td class="${d > 0 ? "up" : d < 0 ? "dn" : ""}">${d > 0 ? "▲" + d : d < 0 ? "▼" + (-d) : ""}</td><td>${esc(r.name)}</td><td class="n">${fmt(r.ess)}</td><td class="n">${fmt(r.final)}</td><td class="n">${num(r.credit / 60)} min</td><td class="n">${num(r.auto)}</td><td class="n">${Math.round(r.top10)}</td></tr>`; }).join("");
+ document.querySelector("#land tbody").innerHTML = land.map(r => `<tr><td class="n">${r.rank}</td><td>${esc(r.name)}</td><td class="n">${num(r.dReal)} km</td><td class="n">+${num(r.dCorr - r.dReal)} km</td><td class="n">${num(r.dCorr)} km</td><td class="n">${fmt(r.final)}</td></tr>`).join("");
+ const c = m.compare;
+ $("cmp").innerHTML = c && c.n >= 5 ? `<div class="card" style="margin-bottom:14px"><h3>Comparaison avec le classement officiel (${c.n} pilotes à l'ESS)</h3><table><tbody>
+  <tr><td>Corrélation de rang, classement officiel / Wakefield</td><td class="n">${num(c.officialVsWakefield, 2)}</td></tr>
+  <tr><td>Corrélation de rang, classement officiel / ordre d'arrivée</td><td class="n">${num(c.officialVsArrival, 2)}</td></tr>
+  ${c.top10VsLead != null ? `<tr><td>Temps dans le top 10 de la course / leading officiel</td><td class="n">${num(c.top10VsLead, 2)}</td></tr><tr><td>Temps dans le top 10 de la course / crédit Wakefield</td><td class="n">${num(c.top10VsCredit, 2)}</td></tr>` : ""}
+  </tbody></table></div>` : official ? `<p class="hint">Trop peu de pilotes du classement officiel retrouvés dans les traces pour comparer.</p>` : "";
+ csv = "place;pilote;statut;temps_reel;temps_corrige;credit_min;km_autonomes;distance_km;distance_corrigee_km\n" + R.map(r => [r.rank, '"' + r.name.replace(/"/g, '""') + '"', r.ess != null ? "ESS" : "pose", r.ess != null ? fmt(r.ess) : "", fmt(r.final), r.credit != null ? num(r.credit / 60) : "", num(r.auto), r.ess != null ? num(m.D) : num(r.dReal), r.ess != null ? "" : num(r.dCorr)].join(";")).join("\n");
+ $("copyCsv").disabled = false; const a = $("dlCsv"); if (a.href.startsWith("blob:")) URL.revokeObjectURL(a.href); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.hidden = false;
+}
+$("copyCsv").onclick = async () => { try { await navigator.clipboard.writeText(csv); status("Classement copié."); } catch { status("Copie refusée par le navigateur : utilisez le lien de téléchargement.", true); } };
+$("run").onclick = () => runAll();
+
+buildSliders(); renderTask(); requestAnimationFrame(loop);
+}
+</script></body></html>

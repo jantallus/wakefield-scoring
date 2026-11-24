@@ -30,6 +30,10 @@ Le classement final reste très proche du classement officiel (même vainqueur, 
 
 Les replays animés sont dans [`replays/`](replays/).
 
+## L'application
+
+[`app/`](app/) est une application dans le navigateur : on y charge la manche (QR code XCTrack ou `.xctsk`), les traces IGC (zip) et, en option, le classement officiel, puis on règle chaque paramètre avec des curseurs. Elle affiche le replay animé, le leaderboard en direct et le classement final. Tout le calcul reste sur l'ordinateur. En ligne : **https://jantallus.github.io/wakefield-scoring/app/** (une fois GitHub Pages activé).
+
 ## Contribuer
 
 Les idées, les critiques et le code sont les bienvenus : voir [CONTRIBUTING.md](CONTRIBUTING.md). Les issues peuvent être écrites en français ou en anglais.
