@@ -49,6 +49,20 @@ D = legs[1:].sum()  # SSS point -> ESS point
 print("SSS -> ESS: %.2f km" % D)
 AFTER = np.array([legs[i + 1:].sum() for i in range(len(C))])  # length from P[i] to ESS point
 
+def geodist(lat1, lon1, lat2, lon2):
+    """Distance on the WGS84 ellipsoid in km (Andoyer-Lambert, a few metres over 100 km)."""
+    a, f = 6378.137, 1 / 298.257223563
+    b1 = np.arctan((1 - f) * np.tan(np.radians(lat1))); b2 = np.arctan((1 - f) * np.tan(np.radians(lat2)))
+    dl = np.radians(np.asarray(lon2) - np.asarray(lon1))
+    h = np.sin((b2 - b1) / 2) ** 2 + np.cos(b1) * np.cos(b2) * np.sin(dl / 2) ** 2
+    sg = 2 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
+    P, Q = (b1 + b2) / 2, (b2 - b1) / 2
+    with np.errstate(divide="ignore", invalid="ignore"):
+        X = (sg - np.sin(sg)) * np.sin(P) ** 2 * np.cos(Q) ** 2 / np.cos(sg / 2) ** 2
+        Y = (sg + np.sin(sg)) * np.cos(P) ** 2 * np.sin(Q) ** 2 / np.sin(sg / 2) ** 2
+        d = a * (sg - f / 2 * (X + Y))
+    return np.where(sg > 1e-12, d, 0.0)
+
 def parse(fn, lines=None):
     name = os.path.basename(fn)[:-4]
     t, la, lo, za = [], [], [], []
@@ -70,8 +84,9 @@ def parse(fn, lines=None):
     if len(t) < 100: return None
     o = np.argsort(t, kind="stable"); t = t[o]
     keep = np.r_[True, np.diff(t) > 0]
-    x, y = proj(np.array(la)[o][keep], np.array(lo)[o][keep])
-    return dict(id=os.path.basename(fn)[:-4], name=name, t=t[keep], x=x, y=y, z=np.array(za, float)[o][keep])
+    lat, lon = np.array(la)[o][keep], np.array(lo)[o][keep]
+    x, y = proj(lat, lon)
+    return dict(id=os.path.basename(fn)[:-4], name=name, t=t[keep], x=x, y=y, lat=lat, lon=lon, z=np.array(za, float)[o][keep])
 
 def rem_dist(x, y, k):
     """Remaining optimised distance to ESS from (x,y) when next cylinder index is k."""
@@ -92,7 +107,8 @@ def rem_dist(x, y, k):
 
 def analyse(p):
     t, x, y = p["t"], p["x"], p["y"]
-    d = np.hypot(x[:, None] - C[None, :, 0], y[:, None] - C[None, :, 1]) - R[None, :]
+    # cylinder validation on the WGS84 ellipsoid (the planar projection is only used for progress)
+    d = np.stack([geodist(p["lat"], p["lon"], TASK[k][1], TASK[k][2]) for k in range(len(C))], 1) - R[None, :]
     tol = TOL * R[None, :]
     inside = d <= tol
     k = 0; tag = []; kidx = np.zeros(len(t), int)

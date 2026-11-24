@@ -40,7 +40,7 @@ The clock is computed only from present and past positions, so it can run live f
 
 **Pilots who land before ESS** are always ranked behind every pilot at ESS. They get a corrected distance, `distance + ε × km flown autonomously`, capped at the task distance (ties: the longer real distance wins), converted to an estimated time: `time until task deadline + (task distance − corrected distance) / v_ref`.
 
-Cylinders are validated with the 0.5 % radius tolerance (FAI category 2).
+Cylinders are validated on the WGS84 ellipsoid with the 0.5 % radius tolerance (FAI category 2). Progress along the course uses a flat projection.
 
 ## First results: PWC Gemona 2026, tasks 2 and 3
 
@@ -84,7 +84,7 @@ The task definitions are in `wakefield/parse.py` (`TASKS`). Distances use a flat
 
 Online: **https://jantallus.github.io/wakefield-scoring/app/** (once GitHub Pages is on). Locally: `python3 -m http.server` at the repository root, then open `http://localhost:8000/app/`. The "example" button loads Gemona 2026 tasks 2 or 3 from `data/`.
 
-`app/core.js` holds the whole computation and also runs in Node: `node app/test/node_test.js data/gemona-2026/tasks/task3.xctsk.txt <folder of .igc files> data/gemona-2026/official/task3.csv`. It gives the same results as the Python pipeline.
+`app/core.js` holds the whole computation and also runs in Node: `node app/test/node_test.js data/gemona-2026/tasks/task3.xctsk.txt <folder of .igc files> data/gemona-2026/official/task3.csv`. It is the **reference implementation**. The Python pipeline in `wakefield/` is kept for analysis, and a GitHub Actions check (`tests/run_consistency.sh`) runs both on Gemona 2026 tasks 2 and 3 at every push: it fails if the pilots at ESS differ, a corrected time differs by more than 15 s, or a landed pilot's corrected distance by more than 0.3 km.
 
 Third-party code in `app/vendor/`: [JSZip](https://stuk.github.io/jszip/) (MIT) and [jsQR](https://github.com/cozmo/jsQR) (Apache 2.0).
 

@@ -119,6 +119,19 @@
     return best;
   }
 
+  /* Distance on the WGS84 ellipsoid in km (Andoyer-Lambert, a few metres over 100 km). */
+  function geodist(lat1, lon1, lat2, lon2) {
+    const a = 6378.137, f = 1 / 298.257223563, rad = Math.PI / 180;
+    const b1 = Math.atan((1 - f) * Math.tan(lat1 * rad)), b2 = Math.atan((1 - f) * Math.tan(lat2 * rad)), dl = (lon2 - lon1) * rad;
+    const h = Math.sin((b2 - b1) / 2) ** 2 + Math.cos(b1) * Math.cos(b2) * Math.sin(dl / 2) ** 2;
+    const sg = 2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, h))));
+    if (sg < 1e-12) return 0;
+    const P = (b1 + b2) / 2, Q = (b2 - b1) / 2;
+    const X = (sg - Math.sin(sg)) * Math.sin(P) ** 2 * Math.cos(Q) ** 2 / Math.cos(sg / 2) ** 2;
+    const Y = (sg + Math.sin(sg)) * Math.cos(P) ** 2 * Math.sin(Q) ** 2 / Math.sin(sg / 2) ** 2;
+    return a * (sg - f / 2 * (X + Y));
+  }
+
   /* ---------- waypoints (CompeGPS .wpt) ---------- */
   function parseWpt(text) {
     const out = [];
@@ -166,7 +179,9 @@
     const n = trk.t.length, C = task.C, R = task.R, nc = C.length;
     const x = new Float64Array(n), y = new Float64Array(n);
     for (let i = 0; i < n; i++) { const p = task.proj(trk.lat[i], trk.lon[i]); x[i] = p[0]; y[i] = p[1]; }
-    const d = k => i => Math.hypot(x[i] - C[k][0], y[i] - C[k][1]) - R[k];
+    // cylinder validation on the WGS84 ellipsoid (the planar projection is only used for progress)
+    const cs = task.course;
+    const d = k => i => geodist(trk.lat[i], trk.lon[i], cs[k].lat, cs[k].lon) - R[k];
     const d0 = d(0);
     let start_i = null, g0 = 0;
     while (g0 < n && trk.t[g0] < task.gate) g0++;
@@ -403,6 +418,6 @@
     return out;
   }
 
-  const api = { DEFAULTS, FIELD_KEYS, DT, parseXctsk, normaliseTask, parseWpt, parseIGC, prepare, computeField, computeClock, buildReplay, parseOfficialCsv, compare, norm, spearman, decodePolyline };
+  const api = { DEFAULTS, FIELD_KEYS, DT, parseXctsk, normaliseTask, parseWpt, parseIGC, prepare, computeField, computeClock, buildReplay, parseOfficialCsv, compare, norm, spearman, decodePolyline, geodist };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.Wakefield = api;
 })(typeof self !== "undefined" ? self : this);

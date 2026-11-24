@@ -10,6 +10,8 @@ Wakefield is an open experiment. Pilots, organisers, scorers and developers are 
 
 ## Changing the model
 
+`app/core.js` is the reference implementation. Change it first, then make the same change in the Python pipeline (`wakefield/`): the check `tests/run_consistency.sh`, run by GitHub Actions on every push and pull request, fails if the two disagree.
+
 A change to the field, the clock or the ranking of landed pilots should come with:
 
 1. the reasoning, in plain words;
