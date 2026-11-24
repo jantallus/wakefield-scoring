@@ -176,6 +176,7 @@ const SL = {
   ["sigB", "Portée vers l'arrière", 0.1, 1.5, 0.05, v => num(v, 2) + " km", "Un pilote derrière vous ne vous aide presque pas."],
   ["phi0", "Force du champ (seuil Φ₀)", 0.5, 30, 0.5, v => num(v), "Plus il est haut, plus il faut de pilotes autour pour être « aidé »."],
   ["Tm", "Durée du sillage", 60, 600, 30, v => num(v / 60) + " min", "Temps pendant lequel la trace d'un pilote marque encore le chemin."],
+  ["Tth", "Durée du marqueur de thermique", 240, 2400, 60, v => num(v / 60, 0) + " min", "Temps pendant lequel un thermique enroulé aide ceux qui viennent l'exploiter ensuite."],
   ["trailW", "Force du sillage", 0, 3, 0.1, v => "× " + num(v), "Poids des traces passées par rapport aux positions actuelles."],
   ["k", "Angle de vue", 0.5, 4, 0.5, v => num(v), "Décroissance vers la verticale : un gaggle à votre aplomb ne vous aide pas."],
   ["sinkW", "Poids d'un point sans montée", 0, 1, 0.05, v => num(v, 2), "Un pilote qui monte marque un thermique (poids 1)."]],
@@ -329,12 +330,12 @@ function updHeat() {
  if (!Dt || !hImg) return; const k = Math.round(f), gw = heat.width, gh = heat.height, d = hImg.data, s = sc();
  const fly = Dt.pilots.filter(p => p.s[k] === 1);
  const oz = sel && sel.s[k] === 1 ? sel.z[k] * 10 : (fly.length ? fly.map(p => p.z[k]).sort((a, b) => a - b)[fly.length >> 1] * 10 : 1500);
- const x0 = cx - Wd / 2 / s - 4, x1 = cx + Wd / 2 / s + 4, y0 = cy - Hd / 2 / s - 4, y1 = cy + Hd / 2 / s + 4, src = [], nt = Dt.step / Kp.Tm * Kp.trailW, lag = Math.round(Kp.keep / Dt.step);
+ const x0 = cx - Wd / 2 / s - 4, x1 = cx + Wd / 2 / s + 4, y0 = cy - Hd / 2 / s - 4, y1 = cy + Hd / 2 / s + 4, src = [], nt = Dt.step / Kp.Tm * Kp.trailW, lag = Math.round(Math.max(Kp.keep, 2 * Kp.Tth) / Dt.step);
  for (const p of Dt.pilots) { if (p === sel) continue;
   for (let j = 0; j <= lag; j++) { const i = k - j; if (i < 1) break; if (p.s[i] !== 1) continue;
    const x = p.x[i] / 100, y = p.y[i] / 100; if (x < x0 || x > x1 || y < y0 || y > y1) continue;
    let hx = x - p.x[i - 1] / 100, hy = y - p.y[i - 1] / 100; const hl = Math.hypot(hx, hy); if (hl < 1e-3) { hx = 0; hy = 0; } else { hx /= hl; hy /= hl; }
-   const c = (p.z[i] - p.z[i - 1]) * 10 / Dt.step > 0.3; src.push(x, y, p.z[i] * 10, hx, hy, (j ? nt : 1) * Math.exp(-j * Dt.step / Kp.Tm) * (c ? Kp.climbW : Kp.sinkW)); } }
+   const c = (p.z[i] - p.z[i - 1]) * 10 / Dt.step > 0.3, age = j * Dt.step; if (!c && age > Kp.keep) continue; src.push(x, y, p.z[i] * 10, hx, hy, (j ? nt : 1) * (c ? Math.exp(-age / Kp.Tth) * Kp.climbW : Math.exp(-age / Kp.Tm) * Kp.sinkW)); } }
  const ka = Kp.k / 4, kb = Kp.k / 2;
  for (let r = 0; r < gh; r++) for (let q = 0; q < gw; q++) { const X = cx + ((q + 0.5) / gw * Wd - Wd / 2) / s, Y = cy - ((r + 0.5) / gh * Hd - Hd / 2) / s; let phi = 0;
   for (let m = 0; m < src.length; m += 6) { const dx = src[m] - X, dy = src[m + 1] - Y; if (dx > 6 || dx < -6 || dy > 6 || dy < -6) continue;

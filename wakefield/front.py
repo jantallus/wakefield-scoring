@@ -7,7 +7,7 @@ sp=lambda a,b: np.corrcoef(np.argsort(np.argsort(a)),np.argsort(np.argsort(b)))[
 d=np.load(J('field_%s_0.15_8.0.npz'%TID))
 S,AIR,grid=d['S'],d['AIR'],d['grid'];P=list(np.load(J('pilots_%s.npy'%TID),allow_pickle=True));N,G=S.shape
 top5=np.zeros(N);top10=np.zeros(N)
-for gi in range(72,G):
+for gi in range(int(np.searchsorted(grid, GATE)),G):
     act=[i for i in range(N) if AIR[i,gi] and P[i]['start'] and (not P[i]['ess'] or grid[gi]<P[i]['ess'])]
     if len(act)<10: continue
     o=np.array(act)[np.argsort(-S[act,gi])]

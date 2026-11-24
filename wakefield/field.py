@@ -9,11 +9,14 @@ PHI0 = float(sys.argv[2]) if len(sys.argv) > 2 else 0.8
 PHI0_DEF, SIG_A, SIG_L0, SIG_LK, SIG_B, TM, KEEP = 0.8, 3.0, 0.6, 0.22, 0.4, 240.0, 720.0
 DT, TR = 10.0, 20.0      # grid step, trail step (s)
 LANDPEN = 2.0
+TTH = float(sys.argv[3]) if len(sys.argv) > 3 else 900.0  # thermal marker memory (s)
+KEEPTH = max(KEEP, 2 * TTH)       # how far back climbing points are read
+BACK = 3600.0                     # grid starts this long before the gate
 
 ess_times = [p["ess"] - GATE for p in pilots if p["ess"]]
 VREF = float(np.median([D / (s / 3600) for s in ess_times]))  # km/h
 t_end = max(p["t_land"] for p in pilots if p["start"])
-grid = np.arange(GATE - KEEP, t_end + DT, DT)
+grid = np.arange(GATE - BACK, t_end + DT, DT)
 G = len(grid); N = len(pilots)
 X = np.full((N, G), np.nan, np.float32); Y = X.copy(); Z = X.copy(); S = X.copy(); CL = np.zeros((N, G), bool)
 AIR = np.zeros((N, G), bool)
@@ -26,8 +29,8 @@ for i, p in enumerate(pilots):
     z20 = np.interp(grid - 20, t, p["z"])
     CL[i] = (Z[i] - z20) / 20 > 0.3
 
-g0 = int(KEEP / DT)                     # index of GATE in grid
-lag = int(TR / DT); nlag = int(KEEP / TR)
+g0 = int(BACK / DT)                     # index of GATE in grid
+lag = int(TR / DT); nlag = int(KEEPTH / TR)
 GV = np.zeros((N, G), np.float32)       # g per pilot per step
 for gi in range(g0, G):
     idx = gi - np.arange(nlag + 1) * lag    # current + trail
@@ -35,8 +38,11 @@ for gi in range(g0, G):
     age = (grid[gi] - grid[idx]).astype(np.float32)
     sx, sy, sz, ss = X[:, idx], Y[:, idx], Z[:, idx], S[:, idx]
     ok = AIR[:, idx]
-    w = np.where(age == 0, 1.0, TR / TM).astype(np.float32) * np.exp(-age / TM).astype(np.float32)
-    w = w[None, :] * np.where(CL[:, idx], 1.0, 0.35) * ok
+    # transitions fade with the wake memory TM; climbing points (a marked thermal) with TTH
+    nrm = np.where(age == 0, 1.0, TR / TM).astype(np.float32)[None, :]
+    w_cl = nrm * np.exp(-age / TTH).astype(np.float32)[None, :]
+    w_tr = nrm * 0.35 * np.exp(-age / TM).astype(np.float32)[None, :] * (age <= KEEP)[None, :]
+    w = np.where(CL[:, idx], w_cl, w_tr) * ok
     obs = np.where(AIR[:, gi])[0]
     if len(obs) == 0: continue
     src = ok.ravel()

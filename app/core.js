@@ -11,6 +11,7 @@
     sigB: 0.4,         // reach of a pilot behind you, km
     phi0: 8,           // field threshold: how much help counts as "helped"
     Tm: 240,           // wake memory, s
+    Tth: 900,          // thermal marker memory: how long a climbing point keeps marking the thermal, s
     keep: 720,         // how far back the trail is read, s
     trailW: 1,         // strength of the wake (trail points vs current positions)
     k: 2,              // angle exponent below the horizon (above: k / 2)
@@ -20,7 +21,7 @@
     disc: 0,           // thermal discovery bonus (experimental): share of the time spent climbing where nobody marked
     landedBase: "deadline" // or "lastEss"
   };
-  const FIELD_KEYS = ["tol", "sigA", "sigL0", "sigLk", "sigB", "phi0", "Tm", "trailW", "k", "climbW", "sinkW"];
+  const FIELD_KEYS = ["tol", "sigA", "sigL0", "sigLk", "sigB", "phi0", "Tm", "Tth", "trailW", "k", "climbW", "sinkW"];
   const DT = 10, TR = 20, STEP = 20;
 
   /* ---------- task ---------- */
@@ -216,7 +217,7 @@
     tracks.forEach((trk, i) => { if (trk) pilots.push(analyse(task, trk, opt.tol)); if (progress && i % 10 === 0) progress(i / tracks.length); });
     const started = pilots.filter(p => p.start !== null);
     if (!started.length) throw new Error("Aucun pilote n'a validé le start : vérifiez l'heure de la porte et le cylindre de start.");
-    const KEEP = opt.keep;
+    const KEEP = 3600; // the grid starts an hour before the gate, for the thermal markers
     const tEnd = Math.max(...started.map(p => p.tLand));
     const G = Math.floor((tEnd - (task.gate - KEEP)) / DT) + 2, N = pilots.length;
     const grid = new Float64Array(G); for (let g = 0; g < G; g++) grid[g] = task.gate - KEEP + g * DT;
@@ -256,7 +257,7 @@
   function computeField(st, opt, progress) {
     opt = Object.assign({}, DEFAULTS, opt || {});
     const { G, N, g0, X, Y, Z, S, AIR, CL, grid } = st;
-    const lag = Math.round(TR / DT), nlag = Math.round(st.keep / TR);
+    const lag = Math.round(TR / DT), keepTh = Math.max(opt.keep, 2 * opt.Tth), nlag = Math.round(keepTh / TR);
     const GV = new Float32Array(N * G);
     const sA2 = opt.sigA * opt.sigA, sB2 = opt.sigB * opt.sigB, rA = 3 * opt.sigA, rB2 = 9 * sB2;
     const kb = opt.k / 2, ka = opt.k / 4;
@@ -267,10 +268,13 @@
       for (let j = 0; j <= nlag; j++) {
         const idx = gi - j * lag; if (idx < 0) break;
         const age = grid[gi] - grid[idx];
-        const base = (j === 0 ? 1 : (TR / opt.Tm) * opt.trailW) * Math.exp(-age / opt.Tm);
+        // transitions fade with the wake memory Tm; climbing points (a marked thermal) with Tth
+        const nrm = j === 0 ? 1 : (TR / opt.Tm) * opt.trailW;
+        const wCl = nrm * Math.exp(-age / opt.Tth) * opt.climbW, wTr = age <= opt.keep ? nrm * Math.exp(-age / opt.Tm) * opt.sinkW : 0;
         for (let i = 0; i < N; i++) {
           const o = i * G + idx; if (!AIR[o]) continue;
-          sx[m] = X[o]; sy[m] = Y[o]; sz[m] = Z[o]; ss[m] = S[o]; sw[m] = base * (CL[o] ? opt.climbW : opt.sinkW); so[m] = i; m++;
+          const w = CL[o] ? wCl : wTr; if (w <= 0) continue;
+          sx[m] = X[o]; sy[m] = Y[o]; sz[m] = Z[o]; ss[m] = S[o]; sw[m] = w; so[m] = i; m++;
         }
       }
       for (let i = 0; i < N; i++) {
