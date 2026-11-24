@@ -23,8 +23,10 @@
     climbW: 1,         // weight of a track point where the pilot was climbing
     sinkW: 0.35,       // weight of a track point where the pilot was not climbing
     eps: 0.15,         // price of risk
-    airTolV: 100,      // airspace: a pilot is penalised only beyond this vertical margin inside a zone, m (GPS altitude)
-    airTolH: 10,       // airspace: horizontal margin, m (a fix closer than this to the zone's edge is tolerated: GPS and arc drawing)
+    airBuffer: 100,    // airspace: an infringement deeper than this (m) costs the whole task, as if absent
+    airCurve: 20,      // airspace: within the buffer the penalty grows as (e^(d/c) - 1) / (e^(buffer/c) - 1), d the depth in m
+                       // (the depth is how far inside the zone the pilot went, the smaller of the vertical and horizontal distances;
+                       // buffer 100 m and c = 20 m reproduce the PWC Gemona 2026 penalties)
     airNoLanding: false, // a landing in a no-landing zone (class R) is listed; true makes it a penalty too
     follow: 0.1,       // follower in a marked thermal: while a pilot climbs in a thermal that someone else marked before he got there,
                        // his clock runs this much faster than real time (0 = off). Marking a thermal earns nothing, so it cannot be faked for credit.
@@ -493,9 +495,13 @@
     ok.forEach(r => { for (let gi = 0; gi < G; gi++) if (grid[gi] >= r.tStop) PROJ[r.i * G + gi] = r.final; });
     const order = essR.slice().sort((a, b) => a.final - b.final)
       .concat(notGoal.sort((a, b) => (b.dCorr - a.dCorr) || (b.dReal - a.dReal) || (a.tau - b.tau)));
-    // a pilot penalised for airspace is ranked after all the others, in the same order among themselves
-    order.forEach(r => { r.penalty = !!pilots[r.i].airPen; r.air = pilots[r.i].air || []; });
-    const ranking = order.filter(r => !r.penalty).concat(order.filter(r => r.penalty));
+    // airspace: a share s of the task lost moves the pilot's time that share of the way towards the last pilot's time;
+    // the whole task lost ranks him after all the others
+    const worst = Math.max(...order.map(r => r.final));
+    order.forEach(r => { const p = pilots[r.i]; r.air = p.air || []; r.airShare = p.airShare || 0; r.penalty = !!p.airPen; r.airAdd = 0;
+      if (r.airShare > 0 && !r.penalty) { r.airAdd = r.airShare * (worst - r.final); r.final += r.airAdd; } });
+    const kept = order.filter(r => !r.penalty), pen = order.filter(r => r.penalty);
+    const ranking = (kept.some(r => r.airAdd > 0) ? kept.sort((a, b) => a.final - b.final) : kept).concat(pen);
     ranking.forEach((r, k) => { r.rank = k + 1; });
     essR.slice().sort((a, b) => a.ess - b.ess).forEach((r, k) => { r.realRank = k + 1; });
     return { vref, D, base, lastEss, ranking, PROJ, RATE, maxCredit: opt.eps * D / vref * 3600 };
@@ -572,7 +578,8 @@
   const inPoly = (x, y, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [x1, y1] = P[i], [x2, y2] = P[j]; if ((y1 > y) !== (y2 > y) && x < (x2 - x1) * (y - y1) / (y2 - y1) + x1) c = !c; } return c; };
   const edgeDist = (x, y, P) => { let b = Infinity; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [x1, y1] = P[j], [x2, y2] = P[i], dx = x2 - x1, dy = y2 - y1, L = dx * dx + dy * dy; const t = L ? Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / L)) : 0; b = Math.min(b, Math.hypot(x - x1 - t * dx, y - y1 - t * dy)); } return b; };
   /* Marks each pilot's infringements in p.air (zone, first time, depth beyond the floor or below the ceiling, depth inside
-     the edge) and p.airPen when one goes beyond both margins at the same fix. Only the flight counts, from take-off to
+     the edge, and the depth: the smaller of the two at the same fix, at its deepest). p.airShare is the share of the
+     task the infringement costs (0 to 1), p.airPen when it is the whole task. Only the flight counts, from take-off to
      landing (no retrieve car). The scan of the tracks is kept on the pilots, so new margins only re-judge it. */
   function checkAirspace(st, zones, opt) {
     opt = Object.assign({}, DEFAULTS, opt);
@@ -598,13 +605,16 @@
       }
     }
     let n = 0;
+    const B = opt.airBuffer, c = Math.max(1, opt.airCurve), share = d => d <= 0 ? 0 : d >= B ? 1 : Math.expm1(d / c) / Math.expm1(B / c);
     for (const p of st.pilots) {
       p.air = (p._airHits || []).map(r => {
-        const pen = r.landing ? opt.airNoLanding && r.fixes[0][1] > opt.airTolH : r.fixes.some(f => f[0] > opt.airTolV && f[1] > opt.airTolH);
-        return { zone: r.zone, t: r.t, n: r.fixes.length, dv: Math.max(...r.fixes.map(f => f[0])), dh: Math.max(...r.fixes.map(f => f[1])), landing: !!r.landing, pen };
+        const depth = r.landing ? 0 : Math.max(...r.fixes.map(f => Math.min(f[0], f[1])));
+        const pen = r.landing ? (opt.airNoLanding ? 1 : 0) : share(depth);
+        return { zone: r.zone, t: r.t, n: r.fixes.length, depth, dv: Math.max(...r.fixes.map(f => f[0])), dh: Math.max(...r.fixes.map(f => f[1])), landing: !!r.landing, share: pen, pen: pen > 0 };
       });
-      p.airPen = p.air.some(r => r.pen);
-      if (p.airPen) n++;
+      p.airShare = Math.min(1, p.air.reduce((a, r) => Math.max(a, r.share), 0));
+      p.airPen = p.airShare >= 1;
+      if (p.airShare > 0) n++;
     }
     return n;
   }

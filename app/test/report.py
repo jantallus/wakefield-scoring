@@ -29,7 +29,7 @@ FTV = meta.get("ftv", 0.25)
 REF_MIN = 120
 tasks = [T["id"] for T in S]
 W = {t: VAL.get(t, 1.0) for t in tasks}
-rel = {}; PEN = {}
+rel = {}; PEN = {}; PART = {}
 for T in S:
     win = min(r["final"] for r in T["rows"])
     worst = max(r["final"] for r in T["rows"]) / win - 1
@@ -41,7 +41,10 @@ for T in S:
         rel.setdefault(n(r["name"]), {})[T["id"]] = worst if pen else r["final"] / win - 1
         if pen:
             ai = [x for x in r.get("air", []) if x["pen"]]
-            PEN.setdefault(T["id"], []).append(r["name"] + (" (" + ", ".join(x["zone"].title() + (f" {x['dv']} m" if x["dv"] else "") for x in ai) + ")" if ai else " (pénalité officielle)"))
+            PEN.setdefault(T["id"], []).append(r["name"] + (" (" + ", ".join(x["zone"].title() + f" {x['depth']} m" for x in ai) + ")" if ai else " (pénalité officielle)"))
+    for r in T["rows"]:
+        if 0 < r.get("airShare", 0) < 1:
+            PART.setdefault(T["id"], []).append(f"{r['name']} {max(x['depth'] for x in r['air'] if x['pen'])} m (−{r['airShare'] * 1000:.0f})")
 def ftv(g):
     budget = sum(W.values()) * (1 - FTV); s = 0.0; kept = {}
     for t in sorted(tasks, key=lambda t: g[t]):
@@ -143,7 +146,7 @@ table{{width:100%;border-collapse:collapse;font-size:15px}}th{{font-weight:500;c
 <p class="notes">Les deux dernières colonnes sont des corrélations de rang chez les pilotes au but. Quand le classement officiel s'écarte lui-même de l'ordre d'arrivée, l'écart avec Wakefield est plus grand aussi.</p>
 {details}
 <h2>Classement général : retards en pourcentage, day quality et FTV officiels</h2>
-<p class="lead">Dans chaque manche, le retard d'un pilote est mesuré en pourcentage du temps corrigé du vainqueur, puis multiplié par la day quality officielle de la manche. Il est converti en minutes comme si chaque manche durait 2 h (1 % de retard = 1,2 min), puis additionné sur les manches gardées : le retard du général est donc un cumul, qui dépasse 2 h pour les pilotes souvent posés ou absents. Comme le FTV de la PWC ({FTV * 100:.0f} %), chaque pilote garde ses meilleures manches jusqu'à {(1 - FTV) * 100:.0f} % de la validité totale, la dernière en partie. Un posé entre avec son temps estimé, un absent avec le plus gros retard de la manche, tout comme un pilote pénalisé (0 point au classement officiel de la manche).{(' Pilotes pénalisés : ' + ' ; '.join(t.replace('task', 'manche ') + ' : ' + ', '.join(v) for t, v in PEN.items()) + '.') if PEN else ''}</p>
+<p class="lead">Dans chaque manche, le retard d'un pilote est mesuré en pourcentage du temps corrigé du vainqueur, puis multiplié par la day quality officielle de la manche. Il est converti en minutes comme si chaque manche durait 2 h (1 % de retard = 1,2 min), puis additionné sur les manches gardées : le retard du général est donc un cumul, qui dépasse 2 h pour les pilotes souvent posés ou absents. Comme le FTV de la PWC ({FTV * 100:.0f} %), chaque pilote garde ses meilleures manches jusqu'à {(1 - FTV) * 100:.0f} % de la validité totale, la dernière en partie. Un posé entre avec son temps estimé, un absent avec le plus gros retard de la manche, tout comme un pilote pénalisé (0 point au classement officiel de la manche).{(' Pilotes pénalisés : ' + ' ; '.join(t.replace('task', 'manche ') + ' : ' + ', '.join(v) for t, v in PEN.items()) + '.') if PEN else ''}{(' Pénalités partielles d’espace aérien (zone tampon de 100 m, équivalent en points sur 1000) : ' + ' ; '.join(t.replace('task', 'manche ') + ' : ' + ', '.join(v) for t, v in PART.items()) + '.') if PART else ''}</p>
 <div class="kpi"><div class="w"><b>{num(sp_ftv)}</b>corrélation de rang avec le général officiel</div><div><b>{same_top10} / 10</b>pilotes en commun dans le top 10</div><div><b>{num(mean_abs, 1)}</b>places d'écart en moyenne</div><div><b>{num(sp_first)}</b>premier essai (retards bruts en minutes)</div><div><b>{num(sp_cum)}</b>sans FTV</div></div>
 <div class="scroll"><table class="stack"><thead><tr><th class="n">Wakefield</th><th class="n">Officiel</th><th class="n">1er essai</th><th>Pilote</th><th class="n">Retard</th><th>Manches écartées</th></tr></thead><tbody>{ov}</tbody></table></div>
 <p class="notes">Manches écartées : celles qui ne comptent pas, ou seulement en partie, au titre du FTV.</p>
