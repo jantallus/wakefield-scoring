@@ -11,6 +11,7 @@ DT, TR = 10.0, 20.0      # grid step, trail step (s)
 LANDPEN = 2.0
 TH_GAP = float(sys.argv[3]) if len(sys.argv) > 3 else 60.0  # a thermal cycle ends when nobody has climbed in it for this long (s)
 TH_R, TH_MAX = 0.4, 3600.0         # thermal radius (km), longest life of a marker (s)
+TH_FADE = float(sys.argv[4]) if len(sys.argv) > 4 else 180.0  # after the cycle ends, the marker fades over this time constant (s)
 KEEPTH = max(KEEP, TH_MAX)         # how far back climbing points are read
 BACK = 3600.0                     # grid starts this long before the gate
 
@@ -62,8 +63,10 @@ for gi in range(g0, G):
     old = jv > nkeep
     nrm = np.where(jv == 0, 1.0, TR / TM * np.where(old, 3.0, 1.0))[None, :]
     wake = np.where(old, 0.0, np.exp(-age / TM))[None, :]
-    alive = DEATH[:, idx] > grid[gi]
-    w = np.where(CL[:, idx], nrm * np.where(alive, 1.0, wake), nrm * 0.35 * wake) * ok
+    dth = DEATH[:, idx]
+    with np.errstate(over="ignore", invalid="ignore"):
+        fade = np.where(dth > grid[gi], 1.0, np.where(np.isfinite(dth) & (TH_FADE > 0), np.exp(-(grid[gi] - dth) / max(TH_FADE, 1e-9)), 0.0))
+    w = np.where(CL[:, idx], nrm * np.maximum(wake, fade), nrm * 0.35 * wake) * ok
     obs = np.where(AIR[:, gi])[0]
     if len(obs) == 0: continue
     src = ok.ravel()

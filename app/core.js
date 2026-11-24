@@ -14,6 +14,7 @@
     thGap: 60,         // a thermal cycle ends when nobody has climbed in it for this long, s
     thR: 0.4,          // radius of a thermal: climbers closer than this to a marker keep it alive, km
     thMax: 3600,       // longest life of a thermal marker, s
+    thFade: 180,       // after the cycle ends, the marker fades out over this time constant, s
     keep: 720,         // how far back the trail is read, s
     trailW: 1,         // strength of the wake (trail points vs current positions)
     k: 2,              // angle exponent below the horizon (above: k / 2)
@@ -23,7 +24,7 @@
     disc: 0,           // thermal discovery bonus (experimental): share of the time spent climbing where nobody marked
     landedBase: "deadline" // or "lastEss"
   };
-  const FIELD_KEYS = ["tol", "sigA", "sigL0", "sigLk", "sigB", "phi0", "Tm", "thGap", "thR", "trailW", "k", "climbW", "sinkW"];
+  const FIELD_KEYS = ["tol", "sigA", "sigL0", "sigLk", "sigB", "phi0", "Tm", "thGap", "thR", "thFade", "trailW", "k", "climbW", "sinkW"];
   const DT = 10, TR = 20, STEP = 20;
 
   /* ---------- task ---------- */
@@ -305,7 +306,11 @@
         for (let i = 0; i < N; i++) {
           const o = i * G + idx; if (!AIR[o]) continue;
           let w;
-          if (CL[o]) w = nrm * opt.climbW * (DEATH[o] > grid[gi] ? 1 : wake);
+          if (CL[o]) {
+            const dth = DEATH[o], t = grid[gi];
+            const fade = dth > t ? 1 : opt.thFade > 0 && dth > -Infinity ? Math.exp(-(t - dth) / opt.thFade) : 0;
+            w = nrm * opt.climbW * Math.max(wake, fade);
+          }
           else w = nrm * opt.sinkW * wake;
           if (w <= 0) continue;
           sx[m] = X[o]; sy[m] = Y[o]; sz[m] = Z[o]; ss[m] = S[o]; sw[m] = w; so[m] = i; m++;
