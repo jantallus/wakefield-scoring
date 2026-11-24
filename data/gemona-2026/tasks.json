@@ -1,7 +1,6 @@
 {
   "competition": "Paragliding World Cup Italy, Gemona, 2026",
   "source": "https://scoring.pwca.org/gemona-2026/",
-  "note": "Task 1 (26 July) was stopped at 13:08 and declared invalid: it is not included.",
   "tasks": [
     {
       "id": "task2",
@@ -43,5 +42,11 @@
     "task5": 1.0,
     "task6": 0.99,
     "task7": 1.0
-  }
+  },
+  "short": "Gemona 2026",
+  "utcOffset": 2,
+  "notes": [
+    "La manche 1, arrêtée et déclarée invalide, n'est pas prise en compte.",
+    "Manche 6, arrêtée à 16:41 : les traces sont coupées à l'arrêt et la manche est close à ce moment, sans temps de recul (score-back) ni bonus d'altitude comme dans le GAP."
+  ]
 }

@@ -70,9 +70,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 <h1>Wakefield : rejouer une manche avec le leading par champ</h1>
 <p class="lead">Chargez la manche et les traces IGC, réglez le champ, et voyez le classement en temps corrigé. Tout le calcul se fait dans votre navigateur : aucune trace n'est envoyée. <a href="https://github.com/jantallus/wakefield-scoring">Le concept et le code sur GitHub</a>.</p>
 
+<div id="setup">
 <div class="card">
  <h3>Essayer avec un exemple</h3>
- <div class="row" style="margin-top:0"><select id="exSel" aria-label="Exemple"><option value="task2">PWC Gemona 2026, manche 2</option><option value="task3" selected>PWC Gemona 2026, manche 3</option><option value="task4">PWC Gemona 2026, manche 4</option><option value="task5">PWC Gemona 2026, manche 5</option><option value="task6">PWC Gemona 2026, manche 6 (arrêtée)</option><option value="task7">PWC Gemona 2026, manche 7</option></select><button id="exBtn">Charger et calculer</button></div>
+ <div class="row" style="margin-top:0"><select id="exSel" aria-label="Exemple"><option>Chargement de la liste…</option></select><button id="exBtn">Charger et calculer</button></div>
 </div>
 
 <h2>1. Données de la manche</h2>
@@ -93,7 +94,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
   <p class="hint">Un zip ou plusieurs fichiers .igc.</p>
   <label class="f" for="fOff" style="margin-top:12px">Classement officiel (option)</label>
   <input id="fOff" type="file" accept=".csv,.txt">
-  <p class="hint">CSV avec au moins les colonnes name et total ; lead pour comparer le leading.</p>
+  <p class="hint">CSV avec au moins les colonnes name et total ; lead pour comparer le leading ; status pour reprendre le statut officiel au but.</p>
  </div>
 </div>
 <div class="card" style="margin-top:14px">
@@ -103,6 +104,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
  <div class="row"><button id="tpAdd">Ajouter une balise</button>
   <label>Porte de start (UTC) <input id="gate" type="text" placeholder="11:15" size="6"></label>
   <label>Deadline (UTC) <input id="deadline" type="text" placeholder="16:00" size="6"></label>
+  <label>But <select id="goalType"><option value="LINE">ligne</option><option value="CYLINDER">cylindre</option></select></label>
   <label>Manche arrêtée à (UTC) <input id="stop" type="text" placeholder="option" size="6"></label>
   <label>Start <select id="dir"><option value="">auto</option><option value="ENTER">en entrant</option><option value="EXIT">en sortant</option></select></label>
   <label>Décalage horaire local <input id="utcOff" type="number" value="2" step="0.5" style="width:5em"> h</label></div>
@@ -121,6 +123,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
   <h3 style="margin-top:14px">Validation</h3><div id="slPrep"></div></div>
 </div>
 
+</div>
+<div class="card" id="replayPick" hidden><h3>Manche</h3><div class="row" style="margin-top:0"><select id="rpSel" aria-label="Manche"></select></div><p class="hint" id="rpNote"></p></div>
 <h2>3. Replay</h2>
 <div class="grid">
 <div>
@@ -221,8 +225,8 @@ $("tp").addEventListener("change", e => {
 });
 $("tp").addEventListener("click", e => { const d = e.target.dataset.del; if (d != null) { tps.splice(+d, 1); renderTask(); } });
 $("tpAdd").onclick = () => { const g = tps.findIndex(p => p.type === "ESS"); tps.splice(g < 0 ? tps.length : g, 0, { type: "TURN", name: "", lat: 0, lon: 0, radius: 1 }); renderTask(); };
-["gate", "deadline", "stop", "dir"].forEach(id => $(id).addEventListener("change", checkTask));
-function taskSpec() { return { tps: tps.map(p => Object.assign({}, p)), gate: parseHM($("gate").value), deadline: parseHM($("deadline").value), stop: parseHM($("stop").value), dir: $("dir").value || null }; }
+["gate", "deadline", "stop", "dir", "goalType"].forEach(id => $(id).addEventListener("change", checkTask));
+function taskSpec() { return { tps: tps.map(p => Object.assign({}, p)), goalType: $("goalType").value, gate: parseHM($("gate").value), deadline: parseHM($("deadline").value), stop: parseHM($("stop").value), dir: $("dir").value || null }; }
 function checkTask() {
  let ok = false;
  try {
@@ -237,7 +241,7 @@ function checkTask() {
 }
 function setTask(t) {
  tps = t.all.map(p => ({ type: p.type, name: p.name, lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5), radius: p.radius }));
- $("gate").value = hhmm(t.gate); $("deadline").value = hhmm(t.deadline); $("stop").value = ""; $("dir").value = "";
+ $("gate").value = hhmm(t.gate); $("deadline").value = hhmm(t.deadline); $("stop").value = ""; $("dir").value = ""; $("goalType").value = t.goalType || "CYLINDER";
  renderTask();
 }
 function readTaskText(text) { try { setTask(W.parseXctsk(text)); status(""); } catch (err) { status("Manche illisible : " + err.message, true); } }
@@ -262,8 +266,8 @@ $("fWpt").addEventListener("change", async e => {
 async function readTracks(files) {
  const out = [];
  for (const f of files) {
-  if (/\.zip$/i.test(f.name)) { const z = await JSZip.loadAsync(f); for (const n of Object.keys(z.files).sort()) if (/\.igc$/i.test(n) && !z.files[n].dir) out.push({ name: n.split("/").pop(), text: await z.files[n].async("binarystring") }); }
-  else if (/\.igc$/i.test(f.name)) out.push({ name: f.name, text: await f.text() });
+  if (/\.zip$/i.test(f.name)) { const z = await JSZip.loadAsync(f); for (const n of Object.keys(z.files).sort()) if (/\.igc$/i.test(n) && !z.files[n].dir) out.push({ name: n.split("/").pop(), text: W.decodeBytes(await z.files[n].async("uint8array")) }); }
+  else if (/\.igc$/i.test(f.name)) out.push({ name: f.name, text: W.decodeBytes(new Uint8Array(await f.arrayBuffer())) });
  }
  return out;
 }
@@ -297,21 +301,42 @@ worker.onmessage = e => {
  const next = queue.shift(); if (next) worker.postMessage({ cmd: next, opt });
 };
 
-/* ---------- example ---------- */
-$("exBtn").onclick = async () => {
- const t = $("exSel").value, base = "../data/gemona-2026/";
+/* ---------- examples: data/examples.json lists the competitions shipped with the app ---------- */
+let exBase = null;
+async function loadExamples() {
+ for (const b of ["../data/", "data/"]) {
+  try {
+   const r = await fetch(b + "examples.json"); if (!r.ok) continue;
+   const list = await r.json(); exBase = b; const opts = [];
+   for (const c of list) {
+    const meta = await fetch(b + c.id + "/tasks.json").then(x => x.json());
+    for (const t of meta.tasks) if (!c.tasks || c.tasks.includes(t.id)) opts.push(`<option value="${c.id}/${t.id}">${esc(c.name)}, ${esc(t.label.toLowerCase())}${t.stopUtc ? " (arrêtée)" : ""}</option>`);
+   }
+   $("exSel").innerHTML = opts.join("");
+   const want = location.hash.slice(1).replace(/-task/, "/task");
+   if (want && [...$("exSel").options].some(o => o.value === want)) { $("exSel").value = want; loadExample(); }
+   return;
+  } catch (e) { /* try the next layout */ }
+ }
+ $("exSel").innerHTML = "<option>Exemples indisponibles ici</option>"; $("exBtn").disabled = true;
+}
+async function loadExample() {
+ const [comp, t] = $("exSel").value.split("/"), base = exBase + comp + "/";
  try {
-  setBusy(true); status("Téléchargement de l'exemple (environ 18 Mo)…");
-  const meta = await fetch(base + "tasks.json").then(r => r.ok ? r.json() : null).catch(() => null);
-  const m = meta && meta.tasks.find(x => x.id === t);
+  setBusy(true); status("Téléchargement de l'exemple…");
+  const meta = await fetch(base + "tasks.json").then(r => r.json()), m = meta.tasks.find(x => x.id === t);
   const [q, z, o] = await Promise.all([fetch(base + "tasks/" + t + ".xctsk.txt").then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }), fetch(base + t + "-igc.zip").then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); }), fetch(base + "official/" + t + ".csv").then(r => r.ok ? r.text() : null)]);
   $("taskText").value = q; setTask(W.parseXctsk(q));
-  if (m && m.stopUtc) { $("stop").value = m.stopUtc; checkTask(); }
+  if (m && m.stopUtc) $("stop").value = m.stopUtc;
+  if (meta.utcOffset != null) $("utcOff").value = meta.utcOffset;
+  checkTask();
   tracks = await readTracks([new File([z], t + ".zip")]); $("trkInfo").textContent = tracks.length + " traces IGC chargées.";
   official = o ? W.parseOfficialCsv(o) : null;
-  setBusy(false); runAll();
- } catch (err) { setBusy(false); status("Impossible de charger l'exemple (" + err.message + "). Ouvrez l'application depuis le dépôt ou GitHub Pages.", true); }
-};
+  setBusy(false); try { history.replaceState(null, "", "#" + comp + "-" + t); } catch (e) {} runAll();
+ } catch (err) { setBusy(false); status("Impossible de charger l'exemple (" + err.message + ").", true); }
+}
+$("exBtn").onclick = loadExample;
+loadExamples();
 
 /* ---------- replay ---------- */
 const cv = $("cv"), ctx = cv.getContext("2d"), fig = $("fig"), tb = $("tb"), scrub = $("scrub");
@@ -434,5 +459,12 @@ $("copyCsv").onclick = async () => { try { await navigator.clipboard.writeText(c
 $("run").onclick = () => runAll();
 
 buildSliders(); renderTask(); requestAnimationFrame(loop);
+/* replay mode: a page published with precomputed results (window.WF_REPLAYS) shows them without the data and settings */
+if (window.WF_REPLAYS) {
+ $("setup").hidden = true; $("replayPick").hidden = false;
+ $("rpSel").innerHTML = WF_REPLAYS.map((r, i) => `<option value="${i}">${esc(r.label)}</option>`).join("");
+ const go = async () => { const r = WF_REPLAYS[+$("rpSel").value]; $("rpNote").textContent = r.note || ""; status("Chargement…"); Dt = null; const m = await fetch(r.url).then(x => x.json()); if (r.utcOffset != null) $("utcOff").value = r.utcOffset; Dt = null; show(m); status(""); };
+ $("rpSel").onchange = go; go();
+}
 }
 </script></body></html>

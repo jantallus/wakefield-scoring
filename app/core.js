@@ -47,7 +47,7 @@
     if (text.startsWith("XCTSK:")) text = text.slice(6);
     const j = JSON.parse(text);
     const tps = [];
-    let gate = null, deadline = null, dir = null;
+    let gate = null, deadline = null, dir = null, goalType = null;
     if (j.version === 2 || j.t) {
       for (const p of j.t) {
         const z = decodePolyline(p.z);
@@ -55,20 +55,20 @@
       }
       // the meaning of "d" (start direction) is not reliable across tools: the direction is deduced from the course
       if (j.s) gate = hms((j.s.g || [])[0]);
-      if (j.g) deadline = hms(j.g.d);
+      if (j.g) { deadline = hms(j.g.d); goalType = j.g.t === 1 ? "LINE" : "CYLINDER"; }
     } else {
       for (const p of j.turnpoints) {
         const w = p.waypoint;
         tps.push({ name: w.name || "", lon: w.lon, lat: w.lat, alt: w.altSmoothed || 0, radius: p.radius / 1000, type: p.type === "SSS" ? "SSS" : p.type === "ESS" ? "ESS" : p.type === "TAKEOFF" ? "TAKEOFF" : "TURN" });
       }
       if (j.sss) { gate = hms((j.sss.timeGates || [])[0]); dir = j.sss.direction || null; }
-      if (j.goal) deadline = hms(j.goal.deadline);
+      if (j.goal) { deadline = hms(j.goal.deadline); goalType = j.goal.type === "LINE" ? "LINE" : "CYLINDER"; }
     }
     // first point of a v2 task is take-off; a point after ESS is the goal
     if (tps.length && tps[0].type === "TURN" && j.version === 2) tps[0].type = "TAKEOFF";
     const e = tps.findIndex(p => p.type === "ESS");
     if (e >= 0) for (let q = e + 1; q < tps.length; q++) if (tps[q].type === "TURN") tps[q].type = "GOAL";
-    return normaliseTask({ tps, gate, deadline, dir });
+    return normaliseTask({ tps, gate, deadline, dir, goalType });
   }
   /* Keep take-off, then SSS ... ESS; points after ESS (goal) are ignored by the clock. */
   function normaliseTask(t) {
@@ -82,7 +82,7 @@
     const lon0 = course.reduce((a, p) => a + p.lon, 0) / course.length;
     // the goal: the first point after ESS (none: ESS is the goal)
     const goal = tps.slice(ei + 1).find(p => p.type === "GOAL" || p.type === "TURN") || null;
-    const task = { course, toff, goal, gate: t.gate, deadline: t.deadline, stop: t.stop == null ? null : t.stop, dir: t.dir, lat0, lon0, all: tps };
+    const task = { course, toff, goal, goalType: t.goalType || "CYLINDER", gate: t.gate, deadline: t.deadline, stop: t.stop == null ? null : t.stop, dir: t.dir, lat0, lon0, all: tps };
     const KX = 111.32 * Math.cos(lat0 * Math.PI / 180), KY = 110.574;
     task.proj = (lat, lon) => [(lon - lon0) * KX, (lat - lat0) * KY];
     task.C = course.map(p => task.proj(p.lat, p.lon));
@@ -177,6 +177,12 @@
     return { name, t: T, lat: LA, lon: LO, z: Z };
   }
 
+  /* IGC files are mostly ASCII; names may be UTF-8 or Latin-1. */
+  function decodeBytes(u8) {
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(u8); }
+    catch (e) { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return s; }
+  }
+
   function interp(xs, ys, x) {
     if (x <= xs[0]) return ys[0];
     const n = xs.length; if (x >= xs[n - 1]) return ys[n - 1];
@@ -224,9 +230,16 @@
       // the goal must be reached in flight: stop at the first minute spent on the ground after ESS
       // (ground speed under 5 km/h and climb or sink under 0.5 m/s for 60 s)
       let still = null;
+      // a goal line is crossed (its length is twice the radius, across the last leg); a goal cylinder is entered
+      const line = task.goalType === "LINE", G0 = task.proj(gl.lat, gl.lon), PL = task.P[task.P.length - 1];
+      let ux = G0[0] - PL[0], uy = G0[1] - PL[1]; const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+      const along = j => (x[j] - G0[0]) * ux + (y[j] - G0[1]) * uy, across = j => -(x[j] - G0[0]) * uy + (y[j] - G0[1]) * ux;
       for (let j = 1; j < n; j++) {
         if (trk.t[j] < ess) continue;
-        if (geodist(trk.lat[j], trk.lon[j], gl.lat, gl.lon) <= rg) { goal = true; break; }
+        if (line) {
+          const a0 = along(j - 1), a1 = along(j);
+          if (a0 < 0 && a1 >= 0) { const u = -a0 / (a1 - a0), c = across(j - 1) + (across(j) - across(j - 1)) * u; if (Math.abs(c) <= rg) { goal = true; break; } }
+        } else if (geodist(trk.lat[j], trk.lon[j], gl.lat, gl.lon) <= rg) { goal = true; break; }
         const dt = trk.t[j] - trk.t[j - 1], sp = Math.hypot(x[j] - x[j - 1], y[j] - y[j - 1]) / dt * 3600, vz = Math.abs(trk.z[j] - trk.z[j - 1]) / dt;
         if (sp < 5 && vz < 0.5) { if (still === null) still = trk.t[j - 1]; if (trk.t[j] - still >= 60) break; } else still = null;
       }
@@ -474,6 +487,15 @@
       task: { cyl: task.course.map((c, k) => ({ n: c.type === "SSS" ? "SSS " + c.name : c.type === "ESS" ? "ESS " + c.name : c.name, x: task.C[k][0], y: task.C[k][1], r: task.R[k] })), route: task.P } };
   }
 
+  /* When the official results are known, take the official goal status of each pilot at ESS:
+     goal lines are judged with tolerances the track alone cannot always settle. */
+  function applyOfficialGoal(st, official) {
+    const off = new Map(official.filter(o => o.status).map(o => [norm(o.name), o.status]));
+    let changed = 0;
+    for (const p of st.pilots) { if (!p.ess) continue; const s = off.get(norm(p.name)); if (!s) continue; const g = s === "GOAL"; if (g !== p.goal) { p.goal = g; changed++; } }
+    return changed;
+  }
+
   /* ---------- comparison with official results ---------- */
   function norm(s) { return String(s).normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/['’]/g, "").replace(/\s+/g, " ").trim(); }
   function parseOfficialCsv(text) {
@@ -508,6 +530,6 @@
     return out;
   }
 
-  const api = { DEFAULTS, FIELD_KEYS, DT, parseXctsk, normaliseTask, parseWpt, parseIGC, prepare, computeField, computeClock, buildReplay, parseOfficialCsv, compare, norm, spearman, decodePolyline, geodist, thermalDeaths };
+  const api = { DEFAULTS, FIELD_KEYS, DT, parseXctsk, normaliseTask, parseWpt, parseIGC, prepare, computeField, computeClock, buildReplay, parseOfficialCsv, compare, norm, spearman, decodePolyline, geodist, thermalDeaths, decodeBytes, applyOfficialGoal };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.Wakefield = api;
 })(typeof self !== "undefined" ? self : this);

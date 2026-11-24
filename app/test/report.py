@@ -69,14 +69,29 @@ mean_abs = sum(abs(rk[k] - offrank[k]) for k in names) / len(names)
 same_top10 = len(set(order[:10]) & set(sorted(names, key=lambda k: offrank[k])[:10]))
 lead = tot[order[0]][0]
 
+# --- who led: correlation of time in the race's top 10 with GAP leading and with Wakefield credit ---
+def spear_l(a, b):
+    import numpy as np
+    x = np.argsort(np.argsort(a)); y = np.argsort(np.argsort(b)); return float(np.corrcoef(x, y)[0, 1])
+for T in S:
+    ee = [r for r in T["rows"] if r["ess"] is not None and r.get("goal", True) and r["offLead"] is not None]
+    h = [r for r in ee if r["realRank"] and r["realRank"] <= len(ee) / 2]
+    T["frontN"] = len(h)
+    T["frontLead"] = spear_l([r["top10"] for r in h], [r["offLead"] for r in h]) if len(h) >= 5 else float("nan")
+    T["frontCredit"] = spear_l([r["top10"] for r in h], [r["credit"] for r in h]) if len(h) >= 5 else float("nan")
+okT = [T for T in S if T["frontN"] >= 5]
+wins = sum(T["frontCredit"] > T["frontLead"] for T in okT)
+NAME = meta.get("short", meta["competition"])
+
 # --- page ---
 rows = "".join(f"""<tr><td>{e(T['label'])}{' <span class="tag">arrêtée</span>' if T['stopped'] else ''}</td><td>{e(T['date'][5:].replace('-', '/'))}</td>
 <td class="n">{num(T['D'], 1)} km</td><td class="n">{T['ess']}</td><td>{e(T['winnerOfficial'])}</td><td>{e(T['winnerWakefield'])}</td><td>{e(T['firstAtEss'])}</td>
 <td class="n">{num(T['spearmanOfficial'])}</td><td class="n">{num(T['spearmanOfficialArrival'])}</td></tr>""" for T in S)
-bars = "".join(f"""<div class="bt">{e(T['label'])}</div>
-<div class="br"><span class="bl">Leading GAP</span><span class="bw"><i class="gap" style="width:{max(0, T['top10VsLead']) * 100:.0f}%"></i></span><b>{num(T['top10VsLead'])}</b></div>
-<div class="br"><span class="bl">Wakefield</span><span class="bw"><i class="wf" style="width:{max(0, T['top10VsCredit']) * 100:.0f}%"></i></span><b>{num(T['top10VsCredit'])}</b></div>""" for T in S)
+bars = "".join(f"""<div class="bt">{e(T['label'])} <span class="hint">({T['frontN']} premiers au but)</span></div>
+<div class="br"><span class="bl">Leading GAP</span><span class="bw"><i class="gap" style="width:{max(0, T['frontLead']) * 100:.0f}%"></i></span><b>{num(T['frontLead'])}</b></div>
+<div class="br"><span class="bl">Wakefield</span><span class="bw"><i class="wf" style="width:{max(0, T['frontCredit']) * 100:.0f}%"></i></span><b>{num(T['frontCredit'])}</b></div>""" for T in okT)
 mean = lambda k: sum(T[k] for T in S) / len(S)
+meanF = lambda k: sum(T[k] for T in okT) / len(okT)
 details = ""
 for T in S:
     ess = [r for r in T["rows"] if r["ess"] is not None and r.get("goal", True)][:12]
@@ -86,7 +101,7 @@ for T in S:
 ov = "".join(f"<tr><td class='n'>{i + 1}</td><td class='n'>{offrank[k]}</td><td class='n'>{first[k]}</td><td>{e(display[k])}</td><td class='n'>{'—' if i == 0 else '+' + num((tot[k][0] - lead), 1) + ' min'}</td><td>{', '.join(t.replace('task', 'M') + ('' if tot[k][1].get(t, 0) < 1e-9 else ' (' + str(round((1 - tot[k][1][t]) * 100)) + ' %)') for t in tasks if tot[k][1].get(t, 0) < 0.999)}</td></tr>" for i, k in enumerate(order[:20]))
 
 page = f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Wakefield, Gemona 2026</title><link rel="icon" href="data:,">
+<title>Wakefield, {e(NAME)}</title><link rel="icon" href="data:,">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600&display=swap" rel="stylesheet">
 <style>
 /* VOICE: rapport d'analyse sobre. IDEA: le bilan d'un directeur d'épreuve. PICTURE: les barres GAP / Wakefield par manche.
@@ -105,19 +120,19 @@ h2{{font:600 26px/1.1 'Barlow Condensed',Barlow,sans-serif;margin:40px 0 10px}}
 .bw{{height:12px;background:var(--line);border-radius:6px;overflow:hidden}}.bw i{{display:block;height:100%}}.gap{{background:#9aa5ae}}.wf{{background:var(--acc)}}
 table{{width:100%;border-collapse:collapse;font-size:15px}}th{{font-weight:500;color:var(--mut);text-align:left;padding:5px 6px;font-size:13px}}td{{padding:6px;border-top:1px solid var(--line);white-space:nowrap}}td.n,th.n{{text-align:right;font-variant-numeric:tabular-nums}}
 .scroll{{overflow-x:auto}}details{{background:var(--card);border-radius:10px;padding:10px 14px;margin:8px 0}}summary{{cursor:pointer;font-weight:600;min-height:28px}}
-.tag{{font-size:12px;background:var(--line);border-radius:4px;padding:1px 6px;margin-left:4px}}
+.hint{{color:var(--mut);font-weight:400;font-size:14px}}.tag{{font-size:12px;background:var(--line);border-radius:4px;padding:1px 6px;margin-left:4px}}
 .notes{{color:var(--mut);font-size:15px;max-width:80ch}}.notes li{{margin:6px 0}}
 @media(max-width:600px){{table{{font-size:13px}}.stack thead{{display:none}}.stack tr{{display:grid;padding-block:10px}}.stack td{{display:flow-root;border:0;padding:3px 0;padding-inline-start:9em;text-align:start;white-space:normal}}.stack td::before{{content:attr(data-l);float:inline-start;width:8.5em;margin-inline-start:-9em;color:var(--mut)}}}}
 </style><script>new MutationObserver(()=>{{for(const c of document.querySelectorAll('.stack td:not([data-l])')){{let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}}}).observe(document,{{childList:true,subtree:true}})</script></head><body><div class="wrap">
-<h1>Gemona 2026 : dans les {len(S)} manches, le crédit Wakefield suit mieux que le leading GAP qui a vraiment mené</h1>
-<p class="lead">Chaque manche valide de la PWC Gemona 2026 rejouée avec Wakefield (réglages par défaut) à partir des traces publiques, et comparée au classement officiel GAP. Pour juger qui a mené, on mesure le temps passé par chaque pilote parmi les 10 premiers de la course, et on regarde s'il suit les points de leading GAP ou le crédit Wakefield.</p>
-<div class="kpi"><div class="w"><b>{num(mean('top10VsCredit'))}</b>corrélation moyenne temps en tête / crédit Wakefield</div><div><b>{num(mean('top10VsLead'))}</b>corrélation moyenne temps en tête / leading GAP</div><div><b>{sum(T['winnerOfficial'] == T['winnerWakefield'] for T in S)} / {len(S)}</b>vainqueurs identiques</div><div><b>{num(mean('spearmanOfficial'))}</b>corrélation de rang moyenne avec le classement officiel</div></div>
-<h2>Qui a mené : le temps en tête suit mieux le crédit Wakefield dans les six manches</h2>
-<p class="lead">Corrélation de rang (pilotes à l'ESS) entre le temps passé parmi les 10 premiers de la course et, d'un côté les points de leading GAP, de l'autre le crédit Wakefield. 1 = même ordre.</p>
+<h1>{e(NAME)} : sur la moitié avant du peloton, le crédit Wakefield suit mieux que le leading GAP qui a vraiment mené dans {wins} manches sur {len(okT)}</h1>
+<p class="lead">Chaque manche de la {e(meta['competition'])} rejouée avec Wakefield (réglages par défaut) à partir des traces publiques, et comparée au classement officiel GAP. Pour juger qui a mené, on mesure le temps passé par chaque pilote parmi les 10 premiers de la course, et on regarde s'il suit les points de leading GAP ou le crédit Wakefield.</p>
+<div class="kpi"><div class="w"><b>{num(meanF('frontCredit'))}</b>moitié avant : temps en tête / crédit Wakefield</div><div><b>{num(meanF('frontLead'))}</b>moitié avant : temps en tête / leading GAP</div><div><b>{sum(T['winnerOfficial'] == T['winnerWakefield'] for T in S)} / {len(S)}</b>vainqueurs identiques</div><div><b>{num(mean('spearmanOfficial'))}</b>corrélation de rang moyenne avec le classement officiel</div></div>
+<h2>Qui a mené, parmi la moitié avant des pilotes au but</h2>
+<p class="lead">Corrélation de rang entre le temps passé parmi les 10 premiers de la course et, d'un côté les points de leading GAP, de l'autre le crédit Wakefield (1 = même ordre). On se limite à la première moitié des pilotes au but : Wakefield crédite aussi les pilotes qui volent seuls loin derrière, ce que le temps en tête ne mesure pas. Sur tout le peloton, les moyennes sont de {num(mean('top10VsCredit'))} pour Wakefield et {num(mean('top10VsLead'))} pour le GAP.</p>
 <div class="bars">{bars}</div>
 <h2>Manche par manche</h2>
 <div class="scroll"><table class="stack"><thead><tr><th>Manche</th><th>Date</th><th class="n">Start → ESS</th><th class="n">Au but</th><th>Vainqueur officiel</th><th>Vainqueur Wakefield</th><th>Premier à l'ESS</th><th class="n">Rang officiel / Wakefield</th><th class="n">Rang officiel / arrivée</th></tr></thead><tbody>{rows}</tbody></table></div>
-<p class="notes">Les deux dernières colonnes sont des corrélations de rang chez les pilotes à l'ESS. En manche 4, le classement officiel s'écarte lui-même de l'ordre d'arrivée (0,78), d'où un écart plus grand avec Wakefield aussi.</p>
+<p class="notes">Les deux dernières colonnes sont des corrélations de rang chez les pilotes au but. Quand le classement officiel s'écarte lui-même de l'ordre d'arrivée, l'écart avec Wakefield est plus grand aussi.</p>
 {details}
 <h2>Classement général : retards en pourcentage, day quality et FTV officiels</h2>
 <p class="lead">Dans chaque manche, le retard d'un pilote est mesuré en pourcentage du temps corrigé du vainqueur, puis multiplié par la day quality officielle de la manche. Il est affiché en minutes sur une manche de référence de 2 h : 1 % de retard = 1,2 min. Comme le FTV de la PWC ({FTV * 100:.0f} %), chaque pilote garde ses meilleures manches jusqu'à {(1 - FTV) * 100:.0f} % de la validité totale, la dernière en partie. Un posé entre avec son temps estimé, un absent avec le plus gros retard de la manche.</p>
@@ -126,8 +141,9 @@ table{{width:100%;border-collapse:collapse;font-size:15px}}th{{font-weight:500;c
 <p class="notes">Manches écartées : celles qui ne comptent pas, ou seulement en partie, au titre du FTV.</p>
 <h2>Méthode et limites</h2>
 <ul class="notes">
-<li>Données : traces IGC, QR codes des manches et résultats publiés par la PWCA ({e(meta['source'])}). La manche 1, arrêtée et déclarée invalide, n'est pas prise en compte.</li>
-<li>Manche 6, arrêtée à 16:41 : les traces sont coupées à l'arrêt et la manche est considérée comme close à ce moment, sans temps de recul (score-back) ni bonus d'altitude comme dans le GAP.</li>
+<li>Données : traces IGC, QR codes des manches et résultats publiés par la PWCA ({e(meta['source'])}).</li>
+{''.join(f"<li>{e(x)}</li>" for x in meta.get('notes', []))}
+<li>Un pilote à l'ESS qui n'atteint pas le but est classé comme un posé juste avant le but. Le statut au but est repris du classement officiel, car une ligne de but se juge avec des tolérances que la trace seule ne tranche pas toujours.</li>
 <li>Le sens du start (en entrant ou en sortant du cylindre) est déduit du parcours ; les temps à l'ESS calculés correspondent aux temps officiels à la seconde pour tous les pilotes comparés.</li>
 <li>Le temps passé parmi les 10 premiers est un juge imparfait, proche de la logique de Wakefield : l'avantage mesuré est sans doute un peu flatteur.</li>
 </ul>

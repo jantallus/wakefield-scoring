@@ -1,0 +1,47 @@
+{
+  "competition": "PWC Baixo Guandu 2026",
+  "short": "Baixo Guandu 2026",
+  "source": "https://scoring.pwca.org/baixo-guandu-2026/",
+  "utcOffset": -3,
+  "ftv": 0.25,
+  "validity": {
+    "task1": 0.995,
+    "task2": 0.995,
+    "task3": 0.998,
+    "task4": 0.996,
+    "task5": 0.997,
+    "task6": 0.987
+  },
+  "tasks": [
+    {
+      "id": "task1",
+      "label": "Manche 1",
+      "date": "2026-10-05"
+    },
+    {
+      "id": "task2",
+      "label": "Manche 2",
+      "date": "2026-10-06"
+    },
+    {
+      "id": "task3",
+      "label": "Manche 3",
+      "date": "2026-10-07"
+    },
+    {
+      "id": "task4",
+      "label": "Manche 4",
+      "date": "2026-10-08"
+    },
+    {
+      "id": "task5",
+      "label": "Manche 5",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "task6",
+      "label": "Manche 6",
+      "date": "2026-10-10"
+    }
+  ]
+}

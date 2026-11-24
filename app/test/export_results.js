@@ -9,7 +9,7 @@ const [taskFile, zipFile, outFile] = process.argv.slice(2);
   const zip = await JSZip.loadAsync(fs.readFileSync(zipFile));
   const names = Object.keys(zip.files).filter(n => /\.igc$/i.test(n) && !zip.files[n].dir).sort();
   const tracks = [];
-  for (const n of names) tracks.push(W.parseIGC(await zip.files[n].async("binarystring"), n.split("/").pop().replace(/\.igc$/i, "")));
+  for (const n of names) tracks.push(W.parseIGC(W.decodeBytes(await zip.files[n].async("uint8array")), n.split("/").pop().replace(/\.igc$/i, "")));
   const st = W.prepare(task, tracks.filter(Boolean));
   const GV = W.computeField(st, {});
   const clk = W.computeClock(st, GV, {});

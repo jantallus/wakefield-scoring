@@ -4,6 +4,7 @@ const W = self.Wakefield;
 let st = null, GV = null, tracks = null, taskSpec = null, official = null;
 const post = (type, data) => self.postMessage(Object.assign({ type }, data || {}));
 function clockAndReplay(opt) {
+  if (official) W.applyOfficialGoal(st, official);
   const clk = W.computeClock(st, GV, opt);
   const replay = W.buildReplay(st, GV, clk);
   const ranking = clk.ranking.map(r => ({ i: r.i, name: r.name, rank: r.rank, realRank: r.realRank || null, ess: r.ess, goal: r.goal, final: r.final, credit: r.credit, auto: r.auto, disc: r.disc, dReal: r.dReal, dCorr: r.dCorr, remLand: r.remLand, top10: st.top10[r.i] / 60 }));
