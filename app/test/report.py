@@ -36,9 +36,12 @@ for T in S:
     for k in offrank: rel.setdefault(k, {})[T["id"]] = worst
     for r in T["rows"]:
         # an official score of 0 for a pilot who flew is a penalty (airspace, start, ...): he takes the task's largest delay, as if absent
-        pen = r.get("offTotal") is not None and float(r["offTotal"]) == 0
+        # penalised: airspace beyond the margins (checked by Wakefield), or an official score of 0 for another reason
+        pen = r.get("penalty") or (r.get("offTotal") is not None and float(r["offTotal"]) == 0)
         rel.setdefault(n(r["name"]), {})[T["id"]] = worst if pen else r["final"] / win - 1
-        if pen: PEN.setdefault(T["id"], []).append(r["name"])
+        if pen:
+            ai = [x for x in r.get("air", []) if x["pen"]]
+            PEN.setdefault(T["id"], []).append(r["name"] + (" (" + ", ".join(x["zone"].title() + (f" {x['dv']} m" if x["dv"] else "") for x in ai) + ")" if ai else " (pénalité officielle)"))
 def ftv(g):
     budget = sum(W.values()) * (1 - FTV); s = 0.0; kept = {}
     for t in sorted(tasks, key=lambda t: g[t]):
@@ -55,7 +58,7 @@ raw = {}
 for T in S:
     win = min(r["final"] for r in T["rows"]); worst = max(r["final"] for r in T["rows"]) - win
     for k in offrank: raw.setdefault(k, {})[T["id"]] = worst
-    for r in T["rows"]: raw.setdefault(n(r["name"]), {})[T["id"]] = worst if r.get("offTotal") is not None and float(r["offTotal"]) == 0 else r["final"] - win
+    for r in T["rows"]: raw.setdefault(n(r["name"]), {})[T["id"]] = worst if r.get("penalty") or (r.get("offTotal") is not None and float(r["offTotal"]) == 0) else r["final"] - win
 def ftv_raw(g):
     budget = sum(W.values()) * (1 - FTV); s = 0.0
     for t in sorted(tasks, key=lambda t: g[t]):

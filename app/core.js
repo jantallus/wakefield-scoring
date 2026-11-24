@@ -23,6 +23,9 @@
     climbW: 1,         // weight of a track point where the pilot was climbing
     sinkW: 0.35,       // weight of a track point where the pilot was not climbing
     eps: 0.15,         // price of risk
+    airTolV: 100,      // airspace: a pilot is penalised only beyond this vertical margin inside a zone, m (GPS altitude)
+    airTolH: 10,       // airspace: horizontal margin, m (a fix closer than this to the zone's edge is tolerated: GPS and arc drawing)
+    airNoLanding: false, // a landing in a no-landing zone (class R) is listed; true makes it a penalty too
     follow: 0.1,       // follower in a marked thermal: while a pilot climbs in a thermal that someone else marked before he got there,
                        // his clock runs this much faster than real time (0 = off). Marking a thermal earns nothing, so it cannot be faked for credit.
     landedBase: "deadline" // or "lastEss"
@@ -217,12 +220,30 @@
         if (d(k)(j) <= tol * R[k]) { tags.push(trk.t[j]); k++; }
       }
     }
-    // take-off / landing: first and last fix above 15 km/h
+    // take-off: first fix above 15 km/h. Landing: the first minute after the start (or the highest point) in which the track covers less than 150 m
+    // (a glider in the air flies several hundred metres a minute, even circling), so that a retrieve car ride recorded
+    // afterwards is not taken for flight; without such a minute, the last fix above 15 km/h.
     let off = trk.t[0], land = trk.t[0], seen = false;
     for (let i = 1; i < n; i++) {
       const sp = Math.hypot(x[i] - x[i - 1], y[i] - y[i - 1]) / (trk.t[i] - trk.t[i - 1]) * 3600;
       if (sp > 15) { if (!seen) { off = trk.t[i]; seen = true; } land = trk.t[i]; }
     }
+    if (seen) {
+      // look for the landing from a moment the pilot is surely flying: the start, or else the highest point of the track
+      // (a pilot standing on launch before take-off must not be taken for landed)
+      let anchor = start_i !== null ? trk.t[start_i] : off;
+      if (start_i === null) { let zm = -Infinity; for (let i = 0; i < n; i++) if (trk.z[i] > zm) { zm = trk.z[i]; anchor = trk.t[i]; } }
+      let j = 0, path = 0;
+      for (let i = 0; i < n; i++) {
+        if (trk.t[i] <= Math.max(off, anchor)) continue;
+        if (j < i) { j = i; path = 0; }
+        while (j + 1 < n && trk.t[j + 1] - trk.t[i] <= 60) { path += Math.hypot(x[j + 1] - x[j], y[j + 1] - y[j]); j++; }
+        if (trk.t[j] - trk.t[i] >= 55 && path < 0.15) { land = Math.min(land, trk.t[i]); break; }
+        if (j > i) path -= Math.hypot(x[i + 1] - x[i], y[i + 1] - y[i]);
+      }
+    }
+    // turnpoints reached after the landing were reached on foot or by car: they do not count
+    while (tags.length && tags[tags.length - 1] > land) tags.pop();
     const ess = tags.length === nc - 1 ? tags[tags.length - 1] : null;
     // goal: after ESS, the pilot must still reach the goal (no timing there). Without a goal point, ESS is the goal.
     let goal = ess !== null && !task.goal;
@@ -470,8 +491,11 @@
     ok.forEach(r => { r.credit = r.ess !== null && r.goal ? r.ess - r.final : null; });
     // freeze projections after the stop
     ok.forEach(r => { for (let gi = 0; gi < G; gi++) if (grid[gi] >= r.tStop) PROJ[r.i * G + gi] = r.final; });
-    const ranking = essR.slice().sort((a, b) => a.final - b.final)
+    const order = essR.slice().sort((a, b) => a.final - b.final)
       .concat(notGoal.sort((a, b) => (b.dCorr - a.dCorr) || (b.dReal - a.dReal) || (a.tau - b.tau)));
+    // a pilot penalised for airspace is ranked after all the others, in the same order among themselves
+    order.forEach(r => { r.penalty = !!pilots[r.i].airPen; r.air = pilots[r.i].air || []; });
+    const ranking = order.filter(r => !r.penalty).concat(order.filter(r => r.penalty));
     ranking.forEach((r, k) => { r.rank = k + 1; });
     essR.slice().sort((a, b) => a.ess - b.ess).forEach((r, k) => { r.realRank = k + 1; });
     return { vref, D, base, lastEss, ranking, PROJ, RATE, maxCredit: opt.eps * D / vref * 3600 };
@@ -506,6 +530,83 @@
     });
     return { t0: task.gate, step: STEP, vref: clk.vref, D: clk.D, pilots: out,
       task: { cyl: task.course.map((c, k) => ({ n: c.type === "SSS" ? "SSS " + c.name : c.type === "ESS" ? "ESS " + c.name : c.name, x: task.C[k][0], y: task.C[k][1], r: task.R[k] })), route: task.P } };
+  }
+
+  /* ---------- airspace (OpenAir) ---------- */
+  // Zones with a floor above the ground (AL > 0) are entered from below their floor upwards; zones from the ground (AL = GND)
+  // are entered below their ceiling. Class R zones are no-landing areas: only a landing inside them counts.
+  function parseOpenAir(text) {
+    const FT = 0.3048, zones = []; let cur = null, center = null, cw = true;
+    const dms = s => { const m = /(\d+):(\d+):(\d+(?:\.\d+)?)\s*([NSEW])/.exec(s); const v = +m[1] + m[2] / 60 + m[3] / 3600; return /[SW]/.test(m[4]) ? -v : v; };
+    const ll = s => { const m = s.match(/\d+:\d+:\d+(?:\.\d+)?\s*[NSEW]/g); return [dms(m[0]), dms(m[1])]; };
+    const alt = s => { s = s.trim().toUpperCase(); if (/^(GND|SFC)/.test(s)) return 0; const m = /([\d.]+)\s*(FT|M)?/.exec(s); if (!m) return 0; const v = +m[1]; return (m[2] || "FT") === "FT" ? v * FT : v; };
+    for (let line of String(text).split(/\r?\n/)) {
+      line = line.split("*")[0].trim(); if (!line) continue;
+      const k = line.split(/\s+/)[0], v = line.slice(k.length).trim();
+      try {
+        if (k === "AC") { cur = { cls: v, name: "", lo: 0, hi: 1e5, ll: [] }; zones.push(cur); cw = true; }
+        else if (!cur) continue;
+        else if (k === "AN") cur.name = v;
+        else if (k === "AL") cur.lo = alt(v);
+        else if (k === "AH") cur.hi = alt(v);
+        else if (k === "DP") cur.ll.push(ll(v));
+        else if (k === "V") { if (/^X=/i.test(v)) center = ll(v.slice(2)); else if (/^D=/i.test(v)) cw = v.slice(2).trim() !== "-"; }
+        else if (k === "DC" && center) { cur.circle = { c: center, r: +v * 1.852 }; }
+        else if (k === "DB" && center) { const [a, b] = v.split(","); cur.ll.push({ arc: true, c: center, a: ll(a), b: ll(b), cw }); }
+      } catch (e) { /* skip a line it cannot read */ }
+    }
+    return zones.filter(z => z.ll.length >= 3 || z.circle || z.ll.some(q => q.arc));
+  }
+  function zonePoly(z, proj) {
+    if (z.circle) { const [cx, cy] = proj(z.circle.c[0], z.circle.c[1]); return Array.from({ length: 72 }, (_, i) => [cx + z.circle.r * Math.sin(i * Math.PI / 36), cy + z.circle.r * Math.cos(i * Math.PI / 36)]); }
+    const out = [];
+    for (const q of z.ll) {
+      if (!q.arc) { out.push(proj(q[0], q[1])); continue; }
+      const [cx, cy] = proj(q.c[0], q.c[1]), A = proj(q.a[0], q.a[1]), B = proj(q.b[0], q.b[1]);
+      const r = Math.hypot(A[0] - cx, A[1] - cy); let t1 = Math.atan2(A[0] - cx, A[1] - cy), t2 = Math.atan2(B[0] - cx, B[1] - cy);
+      if (q.cw) { while (t2 <= t1) t2 += 2 * Math.PI; } else { while (t2 >= t1) t2 -= 2 * Math.PI; }
+      for (let i = 0; i <= 36; i++) { const t = t1 + (t2 - t1) * i / 36; out.push([cx + r * Math.sin(t), cy + r * Math.cos(t)]); }
+    }
+    return out;
+  }
+  const inPoly = (x, y, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [x1, y1] = P[i], [x2, y2] = P[j]; if ((y1 > y) !== (y2 > y) && x < (x2 - x1) * (y - y1) / (y2 - y1) + x1) c = !c; } return c; };
+  const edgeDist = (x, y, P) => { let b = Infinity; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [x1, y1] = P[j], [x2, y2] = P[i], dx = x2 - x1, dy = y2 - y1, L = dx * dx + dy * dy; const t = L ? Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / L)) : 0; b = Math.min(b, Math.hypot(x - x1 - t * dx, y - y1 - t * dy)); } return b; };
+  /* Marks each pilot's infringements in p.air (zone, first time, depth beyond the floor or below the ceiling, depth inside
+     the edge) and p.airPen when one goes beyond both margins at the same fix. Only the flight counts, from take-off to
+     landing (no retrieve car). The scan of the tracks is kept on the pilots, so new margins only re-judge it. */
+  function checkAirspace(st, zones, opt) {
+    opt = Object.assign({}, DEFAULTS, opt);
+    if (st._airZones !== zones) {
+      st._airZones = zones;
+      const proj = st.task.proj;
+      const Z = (zones || []).map(z => { const P = zonePoly(z, proj); const xs = P.map(q => q[0]), ys = P.map(q => q[1]); return { z, P, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; }).filter(q => q.P.length >= 3);
+      for (const p of st.pilots) {
+        const hits = new Map(), t0 = p.tOff, t1 = p.tLand;
+        if (Z.length) for (let k = 0; k < p.t.length; k++) {
+          if (p.t[k] < t0 || p.t[k] > t1) continue;
+          const x = p.x[k], y = p.y[k], h = p.z[k];
+          for (const q of Z) {
+            const z = q.z;
+            if (/^R/i.test(z.cls) || h < z.lo || h > z.hi || x < q.x0 || x > q.x1 || y < q.y0 || y > q.y1 || !inPoly(x, y, q.P)) continue;
+            const r = hits.get(z.name) || { zone: z.name, t: p.t[k], fixes: [] };
+            r.fixes.push([z.lo > 0 ? h - z.lo : z.hi - h, edgeDist(x, y, q.P) * 1000]); hits.set(z.name, r);
+          }
+        }
+        const li = Math.max(0, p.t.findIndex(v => v >= t1)), lx = p.x[li], ly = p.y[li];
+        for (const q of Z) if (/^R/i.test(q.z.cls) && inPoly(lx, ly, q.P)) hits.set("Posé : " + q.z.name, { zone: "Posé : " + q.z.name, t: t1, fixes: [[0, edgeDist(lx, ly, q.P) * 1000]], landing: true });
+        p._airHits = [...hits.values()];
+      }
+    }
+    let n = 0;
+    for (const p of st.pilots) {
+      p.air = (p._airHits || []).map(r => {
+        const pen = r.landing ? opt.airNoLanding && r.fixes[0][1] > opt.airTolH : r.fixes.some(f => f[0] > opt.airTolV && f[1] > opt.airTolH);
+        return { zone: r.zone, t: r.t, n: r.fixes.length, dv: Math.max(...r.fixes.map(f => f[0])), dh: Math.max(...r.fixes.map(f => f[1])), landing: !!r.landing, pen };
+      });
+      p.airPen = p.air.some(r => r.pen);
+      if (p.airPen) n++;
+    }
+    return n;
   }
 
   /* When the official results are known, take the official goal status of each pilot at ESS:
@@ -569,6 +670,6 @@
     return out;
   }
 
-  const api = { DEFAULTS, FIELD_KEYS, DT, parseXctsk, normaliseTask, parseWpt, parseIGC, prepare, computeField, computeClock, buildReplay, parseOfficialCsv, compare, norm, spearman, decodePolyline, geodist, thermalDeaths, decodeBytes, applyOfficialGoal, alignNames };
+  const api = { DEFAULTS, FIELD_KEYS, DT, parseXctsk, normaliseTask, parseWpt, parseIGC, prepare, computeField, computeClock, buildReplay, parseOfficialCsv, compare, norm, spearman, decodePolyline, geodist, thermalDeaths, decodeBytes, applyOfficialGoal, alignNames, parseOpenAir, checkAirspace };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.Wakefield = api;
 })(typeof self !== "undefined" ? self : this);

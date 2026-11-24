@@ -65,6 +65,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .up{color:var(--auto)}.dn{color:#e0603a}
 .kpi{display:flex;flex-wrap:wrap;gap:10px 28px;margin:6px 0 12px}.kpi div{font-size:14px;color:var(--mut)}.kpi b{display:block;font-size:24px;color:var(--ink);font-variant-numeric:tabular-nums}
 @media(max-width:600px){table{font-size:13px}}
+.tag{font-size:12px;border-radius:4px;padding:1px 6px;margin-left:4px;background:#e3e6e8}.tag.pen{background:#f3c5c5;color:#6b1414}
 </style></head><body>
 <div class="wrap">
 <h1>Wakefield : rejouer une manche avec le leading par champ</h1>
@@ -95,6 +96,9 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
   <label class="f" for="fOff" style="margin-top:12px">Classement officiel (option)</label>
   <input id="fOff" type="file" accept=".csv,.txt">
   <p class="hint">CSV avec au moins les colonnes name et total ; lead pour comparer le leading ; status pour reprendre le statut officiel au but.</p>
+  <label class="f" for="fAir" style="margin-top:12px">Espaces aériens (option)</label>
+  <input id="fAir" type="file" accept=".txt,.air,.openair">
+  <p class="hint" id="airInfo">Fichier OpenAir de la compétition. Chaque trace est contrôlée du décollage au posé ; un pilote en infraction au-delà des marges est classé après tous les autres.</p>
  </div>
 </div>
 <div class="card" style="margin-top:14px">
@@ -152,6 +156,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 <div class="scroll"><table id="fin"><thead><tr><th class="n">Place</th><th class="n">Arrivée</th><th></th><th>Pilote</th><th class="n">Temps réel</th><th class="n">Temps corrigé</th><th class="n">Crédit</th><th class="n">Km autonomes</th><th class="n">Min dans le top 10</th></tr></thead><tbody></tbody></table></div>
 <h3 style="margin-top:18px">Pilotes posés ou arrivés à l'ESS sans atteindre le but</h3>
 <p class="hint">Toujours derrière les pilotes au but : un pilote à l'ESS qui n'atteint pas le but n'a pas accompli la manche et compte comme posé juste avant le but. Distance corrigée = distance + ε × km autonomes, plafonnée à la distance de la manche ; la distance réelle départage les égalités.</p>
+<div id="airBox"></div>
 <div class="scroll"><table id="land"><thead><tr><th class="n">Place</th><th>Pilote</th><th class="n">Distance</th><th class="n">Bonus</th><th class="n">Distance corrigée</th><th class="n">Temps estimé</th></tr></thead><tbody></tbody></table></div>
 <div class="row"><button id="copyCsv" disabled>Copier le classement (CSV)</button><a id="dlCsv" href="#" download="wakefield-classement.csv" hidden>Télécharger le CSV</a></div>
 <p class="hint" style="margin-top:24px">Wakefield, licence MIT. Distances calculées en projection plane (environ 0,2 à 0,5 % de moins que les distances officielles sur l'ellipsoïde).</p>
@@ -170,7 +175,7 @@ const parseHM = v => { const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 /* ---------- state ---------- */
-let wpts = [], tps = [], tracks = null, official = null, opt = Object.assign({}, D0), result = null, prepared = false, busy = false;
+let airText = null, wpts = [], tps = [], tracks = null, official = null, opt = Object.assign({}, D0), result = null, prepared = false, busy = false;
 const worker = new Worker("worker.js");
 
 /* ---------- sliders ---------- */
@@ -190,6 +195,8 @@ const SL = {
   ["sinkW", "Poids d'un point sans montée", 0, 1, 0.05, v => num(v, 2), "Un pilote qui monte marque un thermique (poids 1)."]],
  clock: [
   ["eps", "Prix du risque ε", 0, 0.3, 0.01, v => num(v, 2), "Temps maximal gagné sur une manche entièrement menée : ε × distance / v_ref."],
+  ["airTolV", "Marge verticale, espace aérien", 0, 300, 10, v => num(v, 0) + " m", "Une intrusion n'est pénalisée qu'au-delà de cette profondeur sous le plafond ou au-dessus du plancher (altitude GPS). 100 m reproduit la PWC Gemona 2026."],
+  ["airTolH", "Marge horizontale, espace aérien", 0, 500, 10, v => num(v, 0) + " m", "Une intrusion n'est pénalisée qu'au-delà de cette distance à l'intérieur du bord de la zone."],
   ["follow", "Pénalité du suiveur en thermique", 0, 0.5, 0.05, v => v ? "+" + num(v * 100, 0) + " %" : "aucune", "Quand un pilote enroule un thermique déjà marqué par un autre avant son arrivée, son horloge tourne plus vite que le temps réel. Marquer un thermique ne rapporte rien : impossible de tricher en marquant pour de faux."]],
  prep: [["tol", "Tolérance des cylindres", 0, 0.01, 0.001, v => num(v * 100) + " %", "Catégorie 2 FAI : 0,5 %."]]
 };
@@ -272,6 +279,12 @@ async function readTracks(files) {
  return out;
 }
 $("fIgc").addEventListener("change", async e => { status("Lecture des fichiers…"); tracks = await readTracks([...e.target.files]); $("trkInfo").textContent = tracks.length + " traces IGC chargées."; status(""); checkTask(); });
+$("fAir").addEventListener("change", async e => {
+ const f = e.target.files[0]; if (!f) return;
+ airText = await f.text(); const z = W.parseOpenAir(airText);
+ $("airInfo").textContent = z.length + " zones lues : " + z.map(q => q.name).slice(0, 8).join(", ") + (z.length > 8 ? "…" : "") + ".";
+ worker.postMessage({ cmd: "airspace", text: airText }); if (result) send("clock");
+});
 $("fOff").addEventListener("change", async e => {
  const f = e.target.files[0]; if (!f) return;
  try { official = W.parseOfficialCsv(await f.text()); status(official.length + " lignes de classement officiel lues."); if (result) worker.postMessage({ cmd: "official", official, opt }); }
@@ -288,6 +301,7 @@ function runAll(fieldOnly) {
  setBusy(true); $("prog").style.width = "0";
  if (!fieldOnly || !prepared) {
   worker.postMessage({ cmd: "load", task: taskSpec(), tracks, official });
+  worker.postMessage({ cmd: "airspace", text: airText });
   queue = ["prepare", "field"];
  } else queue = ["field"];
 }
@@ -325,7 +339,8 @@ async function loadExample() {
  try {
   setBusy(true); status("Téléchargement de l'exemple…");
   const meta = await fetch(base + "tasks.json").then(r => r.json()), m = meta.tasks.find(x => x.id === t);
-  const [q, z, o] = await Promise.all([fetch(base + "tasks/" + t + ".xctsk.txt").then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }), fetch(base + t + "-igc.zip").then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); }), fetch(base + "official/" + t + ".csv").then(r => r.ok ? r.text() : null)]);
+  const [q, z, o, a] = await Promise.all([fetch(base + "tasks/" + t + ".xctsk.txt").then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }), fetch(base + t + "-igc.zip").then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); }), fetch(base + "official/" + t + ".csv").then(r => r.ok ? r.text() : null), fetch(base + "airspace.txt").then(r => r.ok ? r.text() : null).catch(() => null)]);
+  airText = a; $("airInfo").textContent = a ? W.parseOpenAir(a).length + " zones d'espace aérien de la compétition chargées." : "Pas de fichier d'espaces aériens pour cette compétition.";
   $("taskText").value = q; setTask(W.parseXctsk(q));
   if (m && m.stopUtc) $("stop").value = m.stopUtc;
   if (meta.utcOffset != null) $("utcOff").value = meta.utcOffset;
@@ -444,8 +459,12 @@ function show(m) {
  const R = m.ranking, ess = R.filter(r => r.ess != null && r.goal), land = R.filter(r => !(r.ess != null && r.goal));
  $("kpi").innerHTML = `<div><b>${num(m.D, 2)} km</b>du start à l'ESS</div><div><b>${num(m.vref)} km/h</b>v_ref</div><div><b>${num(m.maxCredit / 60)} min</b>crédit maximal</div><div><b>${ess.length} / ${R.length}</b>pilotes au but</div><div><b>${fmt(m.base)}</b>base de temps des posés</div>`;
  document.querySelector("#fin tbody").innerHTML = ess.map(r => { const d = r.realRank - r.rank;
-  return `<tr><td class="n">${r.rank}</td><td class="n">${r.realRank}</td><td class="${d > 0 ? "up" : d < 0 ? "dn" : ""}">${d > 0 ? "▲" + d : d < 0 ? "▼" + (-d) : ""}</td><td>${esc(r.name)}</td><td class="n">${fmt(r.ess)}</td><td class="n">${fmt(r.final)}</td><td class="n">${num(r.credit / 60)} min</td><td class="n">${num(r.auto)}</td><td class="n">${Math.round(r.top10)}</td></tr>`; }).join("");
- document.querySelector("#land tbody").innerHTML = land.map(r => `<tr><td class="n">${r.rank}</td><td>${esc(r.name)}${r.ess != null ? ' <span class="hint">(ESS sans but)</span>' : ""}</td><td class="n">${num(r.dReal)} km</td><td class="n">+${num(r.dCorr - r.dReal)} km</td><td class="n">${num(r.dCorr)} km</td><td class="n">${fmt(r.final)}</td></tr>`).join("");
+  return `<tr><td class="n">${r.rank}</td><td class="n">${r.realRank}</td><td class="${d > 0 ? "up" : d < 0 ? "dn" : ""}">${d > 0 ? "▲" + d : d < 0 ? "▼" + (-d) : ""}</td><td>${esc(r.name)}${r.penalty ? ' <span class="tag pen">pénalisé</span>' : ""}</td><td class="n">${fmt(r.ess)}</td><td class="n">${fmt(r.final)}</td><td class="n">${num(r.credit / 60)} min</td><td class="n">${num(r.auto)}</td><td class="n">${Math.round(r.top10)}</td></tr>`; }).join("");
+ document.querySelector("#land tbody").innerHTML = land.map(r => `<tr><td class="n">${r.rank}</td><td>${esc(r.name)}${r.ess != null ? ' <span class="hint">(ESS sans but)</span>' : ""}${r.penalty ? ' <span class="tag pen">pénalisé</span>' : ""}</td><td class="n">${num(r.dReal)} km</td><td class="n">+${num(r.dCorr - r.dReal)} km</td><td class="n">${num(r.dCorr)} km</td><td class="n">${fmt(r.final)}</td></tr>`).join("");
+ const airs = R.flatMap(r => (r.air || []).map(a => Object.assign({ name: r.name }, a))).sort((a, b) => (b.pen - a.pen) || (b.dv - a.dv));
+ const hm = t => { const u = t + (+$("utcOff").value || 0) * 3600; return String(Math.floor(u / 3600) % 24).padStart(2, "0") + ":" + String(Math.floor(u % 3600 / 60)).padStart(2, "0"); };
+ $("airBox").innerHTML = airs.length ? `<h3 style="margin-top:18px">Espace aérien</h3><p class="hint">${airs.filter(a => a.pen).length} infraction(s) au-delà des marges (${num(Kp.airTolV, 0)} m en vertical, ${num(Kp.airTolH, 0)} m en horizontal) : ces pilotes sont classés après tous les autres. Les intrusions dans les marges et les posés en zone interdite d'atterrissage sont listés sans pénalité.</p>
+  <div class="scroll"><table><thead><tr><th>Pilote</th><th>Zone</th><th class="n">Heure</th><th class="n">Profondeur verticale</th><th class="n">Dans la zone</th><th>Décision</th></tr></thead><tbody>${airs.map(a => `<tr><td>${esc(a.name)}</td><td>${esc(a.zone)}</td><td class="n">${hm(a.t)}</td><td class="n">${a.landing ? "" : num(a.dv, 0) + " m"}</td><td class="n">${num(a.dh, 0)} m</td><td>${a.pen ? '<span class="tag pen">pénalisé</span>' : "dans la marge"}</td></tr>`).join("")}</tbody></table></div>` : "";
  const c = m.compare;
  $("cmp").innerHTML = c && c.n >= 5 ? `<div class="card" style="margin-bottom:14px"><h3>Comparaison avec le classement officiel (${c.n} pilotes à l'ESS)</h3><table><tbody>
   <tr><td>Corrélation de rang, classement officiel / Wakefield</td><td class="n">${num(c.officialVsWakefield, 2)}</td></tr>

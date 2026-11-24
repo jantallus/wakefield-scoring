@@ -138,11 +138,27 @@ def analyse(p):
         m = kidx == kk
         rem[m] = rem_dist(x[m], y[m], kk)
     p["rem"] = rem
-    # landing: last time ground speed > 15 km/h
+    # take-off: first fix above 15 km/h; landing: the first minute after the start (or the highest point) in which the track covers less than 150 m
+    # (so that a retrieve car ride recorded afterwards is not flight); else the last fix above 15 km/h
     sp = np.r_[0, np.hypot(np.diff(x), np.diff(y)) / np.diff(t) * 3600]
     mv = np.where(sp > 15)[0]
-    p["t_off"] = float(t[mv[0]]) if len(mv) else float(t[0])
-    p["t_land"] = float(t[mv[-1]]) if len(mv) else float(t[0])
+    t_off = float(t[mv[0]]) if len(mv) else float(t[0])
+    land = float(t[mv[-1]]) if len(mv) else float(t[0])
+    if len(mv):
+        seg = np.r_[np.hypot(np.diff(x), np.diff(y)), 0]          # seg[k]: k -> k+1
+        cum = np.r_[0, np.cumsum(seg[:-1])]                      # path length from fix 0 to fix k
+        # from a moment the pilot is surely flying: the start, or else the highest point (not standing on launch)
+        anchor = p["start"] if p.get("start") is not None else float(t[int(np.argmax(p["z"]))])
+        for i in range(len(t)):
+            if t[i] <= max(t_off, anchor): continue
+            j = np.searchsorted(t, t[i] + 60, side="right") - 1
+            if t[j] - t[i] >= 55 and cum[j] - cum[i] < 0.15:
+                land = min(land, float(t[i])); break
+    p["t_off"] = t_off
+    p["t_land"] = land
+    # turnpoints reached after the landing were reached on foot or by car: they do not count
+    p["tags"] = [tg for tg in p["tags"] if tg[1] <= land]
+    if p["ess"] is not None and p["ess"] > land: p["ess"] = None
     return p
 
 if __name__ == "__main__":

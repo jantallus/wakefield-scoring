@@ -72,13 +72,13 @@ Compared with the official PWCA results (GAP scoring):
 
 | | Task 2 | Task 3 (gaggle race) |
 | --- | --- | --- |
-| Pilots at ESS compared | 49 | 104 |
+| Pilots at ESS compared | 49 | 106 |
 | Winner, official / Wakefield | Lambert / Lambert | Puthod / Puthod |
 | Rank correlation, official vs Wakefield | 0.97 | 0.96 |
-| Time in the race's top 10 vs GAP leading points | 0.65 | 0.40 |
-| Time in the race's top 10 vs Wakefield credit | 0.84 | 0.80 |
+| Time in the race's top 10 vs GAP leading points | 0.78 | 0.47 |
+| Time in the race's top 10 vs Wakefield credit | 0.74 | 0.70 |
 
-The final rankings stay very close to the official ones, but the Wakefield credit follows the time really spent at the front much better than GAP leading points, especially in a gaggle race. "Time in the top 10" is an imperfect judge, close to the model's logic, so the advantage is probably somewhat flattering.
+The final rankings stay very close to the official ones. Over all the pilots at ESS, the Wakefield credit follows the time really spent at the front much better than GAP leading points in the gaggle race (task 3), and slightly worse in task 2, where it also credits pilots flying alone further back; among the front half of the pilots in goal it is ahead in both (see the competition reports). "Time in the top 10" is an imperfect judge, close to the model's logic, so the advantage is probably somewhat flattering.
 
 Open the replays in a browser: [`replays/task2/index.html`](replays/task2/index.html), [`replays/task3/index.html`](replays/task3/index.html) (serve the folder, for example `python3 -m http.server`, since the page loads `replay.json`).
 
@@ -104,13 +104,17 @@ The task definitions are in `wakefield/parse.py` (`TASKS`). Distances use a flat
 
 ## The whole competition
 
-All six valid tasks of PWC Gemona 2026 (task 1 was stopped and declared invalid) are in `data/gemona-2026/`, with their XCTrack QR codes and the official results. `node app/test/season.js data/gemona-2026 out.json` then `python3 app/test/report.py out.json data/gemona-2026 results/gemona-2026.html` rebuild the report [`results/gemona-2026.html`](results/gemona-2026.html): task by task comparison with the official results, and an overall ranking in time: in each task a pilot's delay is their share behind the winner's corrected time, weighted by the official day quality and shown in minutes on a 2-hour reference task (1 % = 1.2 min); the PWC's FTV (25 %) then keeps each pilot's best tasks. On Gemona its rank correlation with the official overall ranking is 0.97, with the same winner.
+All six valid tasks of PWC Gemona 2026 (task 1 was stopped and declared invalid) are in `data/gemona-2026/`, with their XCTrack QR codes and the official results. `node app/test/season.js data/gemona-2026 out.json` then `python3 app/test/report.py out.json data/gemona-2026 results/gemona-2026.html` rebuild the report [`results/gemona-2026.html`](results/gemona-2026.html): task by task comparison with the official results, and an overall ranking in time: in each task a pilot's delay is their share behind the winner's corrected time, weighted by the official day quality and shown in minutes on a 2-hour reference task (1 % = 1.2 min); the PWC's FTV (25 %) then keeps each pilot's best tasks. The overall delay is a sum over the tasks kept, each counted on that 2-hour scale. On Gemona its rank correlation with the official overall ranking is 0.99, with the same winner.
 
-**PWC Baixo Guandu 2026** (Brazil, six tasks, 49 pilots) is in `data/baixo-guandu-2026/`, with its report [`results/baixo-guandu-2026.html`](results/baixo-guandu-2026.html). On both competitions, among the front half of the pilots in goal, the Wakefield credit follows the time spent among the race's first 10 better than GAP leading points (Gemona 0.82 vs 0.70, Baixo Guandu 0.81 vs 0.73). Over the whole field GAP does better in Baixo Guandu, because Wakefield also credits pilots flying alone far behind, which "time at the front" does not measure. When official results are given, the official goal status of pilots at ESS is used: goal lines are judged with tolerances a track alone cannot always settle.
+**PWC Baixo Guandu 2026** (Brazil, six tasks, 49 pilots) is in `data/baixo-guandu-2026/`, with its report [`results/baixo-guandu-2026.html`](results/baixo-guandu-2026.html). On both competitions, among the front half of the pilots in goal, the Wakefield credit follows the time spent among the race's first 10 better than GAP leading points (Gemona 0.85 vs 0.69, Baixo Guandu 0.81 vs 0.70). Over the whole field GAP does better in Baixo Guandu, because Wakefield also credits pilots flying alone far behind, which "time at the front" does not measure. When official results are given, the official goal status of pilots at ESS is used: goal lines are judged with tolerances a track alone cannot always settle. A pilot with an official score of 0 for a task he flew (a penalty) takes that task's largest delay, as if absent.
+
+**Landing.** A track often goes on after the landing, in the retrieve car. The landing is the first minute after the start (or after the highest point, for a pilot who never started) in which the track covers less than 150 m; turnpoints reached after it do not count, so a car driving through the ESS cylinder gives no ESS.
+
+**Airspace.** With the competition's OpenAir file (`data/<competition>/airspace.txt`, or loaded in the app), every track is checked from take-off to landing. A pilot who goes more than 100 m (GPS altitude) beyond a zone's floor or ceiling, and more than 10 m inside its edge, is penalised: ranked after all the others in that task, and given the task's largest delay in the overall ranking. Both margins are sliders in the app. On PWC Gemona 2026 these values reproduce the 11 official airspace penalties exactly (Riserva Cornino, tasks 3 and 4), and nobody else. Landings in no-landing zones are listed without penalty.
 
 ## The application
 
-[`app/`](app/) is a browser application: load the task (XCTrack QR code or `.xctsk`), the IGC tracks (zip) and, optionally, the official results, then tune every parameter with sliders and watch the animated replay, the live leaderboard and the final ranking. Everything runs locally, in a Web Worker: no track leaves the computer. A field takes about 5 to 10 seconds for a task of 120 pilots; ε, the follower penalty and the landed pilots' time base recompute instantly.
+[`app/`](app/) is a browser application: load the task (XCTrack QR code or `.xctsk`), the IGC tracks (zip) and, optionally, the official results, then tune every parameter with sliders and watch the animated replay, the live leaderboard and the final ranking. Everything runs locally, in a Web Worker: no track leaves the computer. A field takes about 5 to 10 seconds for a task of 120 pilots; ε, the follower penalty, the airspace margins and the landed pilots' time base recompute instantly.
 
 Online: **https://jantallus.github.io/wakefield-scoring/app/** (once GitHub Pages is on). Locally: `python3 -m http.server` at the repository root, then open `http://localhost:8000/app/`. The "example" button loads Gemona 2026 tasks 2 or 3 from `data/`.
 

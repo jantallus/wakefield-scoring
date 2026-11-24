@@ -1,13 +1,14 @@
 /* Wakefield worker: heavy computation off the page's thread. */
 importScripts("core.js");
 const W = self.Wakefield;
-let st = null, GV = null, tracks = null, taskSpec = null, official = null;
+let st = null, GV = null, tracks = null, taskSpec = null, official = null, zones = null;
 const post = (type, data) => self.postMessage(Object.assign({ type }, data || {}));
 function clockAndReplay(opt) {
   if (official) W.applyOfficialGoal(st, official);
+  W.checkAirspace(st, zones, opt);
   const clk = W.computeClock(st, GV, opt);
   const replay = W.buildReplay(st, GV, clk);
-  const ranking = clk.ranking.map(r => ({ i: r.i, name: r.name, rank: r.rank, realRank: r.realRank || null, ess: r.ess, goal: r.goal, final: r.final, credit: r.credit, auto: r.auto, fol: r.fol, dReal: r.dReal, dCorr: r.dCorr, remLand: r.remLand, top10: st.top10[r.i] / 60 }));
+  const ranking = clk.ranking.map(r => ({ i: r.i, name: r.name, rank: r.rank, realRank: r.realRank || null, ess: r.ess, goal: r.goal, final: r.final, credit: r.credit, auto: r.auto, fol: r.fol, dReal: r.dReal, dCorr: r.dCorr, remLand: r.remLand, top10: st.top10[r.i] / 60, penalty: !!r.penalty, air: r.air }));
   const cmp = official ? W.compare(st, clk, official) : null;
   if (cmp) delete cmp.rows;
   post("result", { replay, ranking, vref: clk.vref, D: clk.D, maxCredit: clk.maxCredit, base: clk.base, compare: cmp, opt });
@@ -29,6 +30,8 @@ self.onmessage = e => {
       clockAndReplay(m.opt);
     } else if (m.cmd === "clock") {
       clockAndReplay(m.opt);
+    } else if (m.cmd === "airspace") {
+      zones = m.text ? W.parseOpenAir(m.text) : null;
     } else if (m.cmd === "official") {
       official = m.official;
       if (st && GV) clockAndReplay(m.opt);
