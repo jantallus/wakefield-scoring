@@ -2,6 +2,8 @@
 
 **A paragliding race scoring idea: one clock per pilot, slowed down when the pilot flies on their own initiative and running at real time when they use other pilots.**
 
+*The anti-NPC scoring: a pilot who just follows the gaggle is no longer paid like the one who races in front.*
+
 *[Version française](README.fr.md)*
 
 ## The idea

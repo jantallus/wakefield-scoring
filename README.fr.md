@@ -2,6 +2,8 @@
 
 **Une idée de scoring pour les courses de parapente : un chrono par pilote, qui ralentit quand le pilote vole de sa propre initiative et tourne en temps réel quand il s'aide des autres.**
 
+*Le scoring anti-PNJ : le pilote qui se contente de suivre le gaggle n'est plus payé comme celui qui fait la course devant.*
+
 *[English version](README.md)*
 
 ## L'idée
